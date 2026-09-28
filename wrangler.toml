@@ -14,14 +14,10 @@ run_worker_first = true
 [ai]
 binding = "AI"
 
-# 하루 사용량 제한(악용/과금 방지)에 쓰는 KV 네임스페이스.
-# Cloudflare 대시보드 > Storage & Databases > KV > Create a namespace 로
-# (예: bbald-ai-ratelimit) 만든 뒤, 생성된 Namespace ID를 아래 id 값에 넣어주면
-# 자동으로 하루 사용 횟수 제한이 켜진다. 비워두면(=바인딩이 없으면) 제한 없이
-# 그냥 동작한다 (src/rate-limit.js 참고).
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT_KV"
-# id = "REPLACE_ME"
+# 하루 사용량 제한(악용/과금 방지)에 쓰는 KV 네임스페이스. (src/rate-limit.js 참고)
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "b73742bb2a6d4515b648550622f3550f"
 
 # ramalok.kr 이 Cloudflare 네임서버로 연결되어 있다면, Workers 배포 후
 # Cloudflare 대시보드 > Workers & Pages > bbald-ai > Settings > Domains & Routes 에서
