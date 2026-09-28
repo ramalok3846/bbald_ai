@@ -8,6 +8,7 @@ import {
   builtinReply,
 } from "./bbald.js";
 import { callAnthropic, callOpenAI, callGemini, callCloudflareAI } from "./providers.js";
+import { checkAndConsumeDailyLimit } from "./rate-limit.js";
 
 const CREDIT_COST = {
   builtin: 1,
@@ -72,6 +73,21 @@ async function handleChat(request, env) {
     });
   }
 
+  // 하루 사용량 제한 (RATE_LIMIT_KV가 설정돼 있을 때만 실제로 막는다)
+  const limitCheck = await checkAndConsumeDailyLimit(env, request, provider);
+  if (!limitCheck.allowed) {
+    return json(
+      {
+        reply: "오늘 빨드가 너무 말을 많이 했다능! 하루 사용량을 다 썼어... 내일 다시 놀아달라능! 🌙🦕",
+        credits,
+        isSmart,
+        snack: false,
+        dailyLimitReached: true,
+      },
+      { status: 429 }
+    );
+  }
+
   const systemPrompt = buildSystemPrompt(isSmart);
   let reply;
   try {
@@ -110,6 +126,7 @@ async function handleChat(request, env) {
     isSmart,
     snack: snack || false,
     provider,
+    dailyRemaining: limitCheck.remaining,
   });
 }
 

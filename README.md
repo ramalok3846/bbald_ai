@@ -50,6 +50,9 @@ API 키는 설정 모달에 입력하면 브라우저에만 저장되고, 매 �
 - 이미지 첨부는 로컬 파일 업로드(📎), 이미지 URL(🔗), 클립보드 붙여넣기(Ctrl+V) 세 가지 방식을 모두 지원하며,
   Claude/ChatGPT/Gemini로 보내면 실제 이미지 인식이 가능합니다 (빨드 기본/Cloudflare Workers AI는 귀엽게 반응만 함).
 - 설정 모달에 이메일 변경/비밀번호 변경 UI가 있으며, Firebase 연동 후 실제로 동작합니다.
+- 하루 사용량 제한(과사용/악용 방지)을 `src/rate-limit.js`로 추가했습니다. Cloudflare 대시보드에서
+  KV 네임스페이스를 만들어 `wrangler.toml`의 `RATE_LIMIT_KV` 바인딩을 켜기 전까지는 제한 없이 동작하고,
+  켜면 IP당 provider별 하루 요청 횟수를 KST 자정 기준으로 제한합니다 (초과 시 429 응답 + 귀여운 대사).
 
 ## 로컬 개발
 

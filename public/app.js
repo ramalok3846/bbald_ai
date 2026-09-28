@@ -345,7 +345,9 @@
       const data = await res.json();
 
       if (!res.ok) {
-        addMessage("assistant", data.error || "빨드가 넘어졌다능...", { extraClass: "error" });
+        addMessage("assistant", data.error || data.reply || "빨드가 넘어졌다능...", {
+          extraClass: data.dailyLimitReached ? "snack" : "error",
+        });
       } else {
         addMessage("assistant", data.reply);
         state.history.push({ role: "assistant", content: data.reply });
