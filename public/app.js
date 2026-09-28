@@ -35,6 +35,11 @@
   const chatWrap = document.querySelector(".chat-wrap");
   const stickerBtn = document.getElementById("stickerBtn");
 
+  const modelDescEl = document.getElementById("modelDesc");
+  const noticesBtn = document.getElementById("noticesBtn");
+  const noticesBackdrop = document.getElementById("noticesBackdrop");
+  const closeNotices = document.getElementById("closeNotices");
+
   const LS_KEY = "bbald_ai_state_v1";
   const SIGNUP_BONUS = 100; // 첫 가입 시 추가로 얹어주는 크레딧
   const STICKER_BONUS = 20;
@@ -391,6 +396,26 @@
     if (e.target === settingsBackdrop) settingsBackdrop.classList.remove("open");
   });
 
+  // ---------------- 공지사항 모달 ----------------
+  noticesBtn.addEventListener("click", () => noticesBackdrop.classList.add("open"));
+  closeNotices.addEventListener("click", () => noticesBackdrop.classList.remove("open"));
+  noticesBackdrop.addEventListener("click", (e) => {
+    if (e.target === noticesBackdrop) noticesBackdrop.classList.remove("open");
+  });
+
+  // ---------------- 모델 설명 ----------------
+  const MODEL_DESCRIPTIONS = {
+    "haiku-4.5": "⚡ 빨드 라이트 — 제일 빠르고 가벼운 두뇌. 짧고 간단한 대화에 딱이다능!",
+    "sonnet-5": "🦕 빨드 기본 — 속도와 똑똑함의 균형. 평소엔 이걸로 쓰면 딱 좋다능!",
+    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 크레딧을 더 쓴다능.",
+    "fable-5.1": "📖 빨드 스토리 — 이야기하듯 표현력이 풍부한 두뇌. 창작/이야기에 어울린다능!",
+  };
+  function updateModelDesc() {
+    modelDescEl.textContent = MODEL_DESCRIPTIONS[modelSelect.value] || "";
+  }
+  modelSelect.addEventListener("change", updateModelDesc);
+  updateModelDesc();
+
   function bindKeyInput(id, providerKey) {
     const el = document.getElementById(id);
     el.addEventListener("change", () => {
@@ -416,10 +441,11 @@
     saveState();
   });
 
-  // ---------------- 무작위 빨드 스티커 이벤트 (+20 크레딧) ----------------
+  // ---------------- 무작위 빨드 스티커 이벤트 (크레딧 10~30 랜덤 지급) ----------------
+  const stickerBadge = stickerBtn.querySelector(".sticker-badge");
   let stickerTimer = null;
   function scheduleSticker() {
-    const delay = 25000 + Math.random() * 35000; // 25~60초 랜덤 간격
+    const delay = 90000 + Math.random() * 150000; // 1.5~4분 랜덤 간격
     stickerTimer = setTimeout(showSticker, delay);
   }
   function showSticker() {
@@ -428,21 +454,24 @@
     const maxY = Math.max(0, bounds.height - 64);
     stickerBtn.style.left = `${Math.random() * maxX}px`;
     stickerBtn.style.top = `${Math.random() * maxY}px`;
+
+    const reward = STICKER_BONUS - 10 + Math.floor(Math.random() * 21); // 10~30
+    stickerBadge.textContent = `+${reward}`;
     stickerBtn.hidden = false;
 
     const hideTimer = setTimeout(() => {
       stickerBtn.hidden = true;
       scheduleSticker();
-    }, 8000);
+    }, 4000); // 4초만 보이고 사라짐
 
     stickerBtn.onclick = () => {
       clearTimeout(hideTimer);
       stickerBtn.hidden = true;
-      state.credits += STICKER_BONUS;
+      state.credits += reward;
       creditValueEl.textContent = state.credits;
       creditInput.value = state.credits;
       saveState();
-      addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${STICKER_BONUS} 선물이다능! 🎁🦕`, { extraClass: "snack" });
+      addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${reward} 선물이다능! 🎁🦕`, { extraClass: "snack" });
       scheduleSticker();
     };
   }

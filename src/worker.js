@@ -130,9 +130,20 @@ async function handleChat(request, env) {
   });
 }
 
+// 공개 진입점은 ramalok.kr/bbald_ai로 통일한다. PaLhomepage의 프록시(worker/index.js)를
+// 거친 요청에는 "x-bbald-proxied" 헤더가 실려오므로, 그게 없이 이 dev 주소로
+// 직접 들어온 요청만 ramalok.kr/bbald_ai로 리다이렉트한다 (로컬 개발 중 wrangler dev
+// 주소는 이 호스트명이 아니라서 영향받지 않는다).
+const CANONICAL_DEV_HOST = "bbald-ai.ramalok.workers.dev";
+const CANONICAL_PUBLIC_URL = "https://ramalok.kr/bbald_ai";
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.hostname === CANONICAL_DEV_HOST && !request.headers.get("x-bbald-proxied")) {
+      return Response.redirect(CANONICAL_PUBLIC_URL + url.pathname.replace(/^\/+/, "/") + url.search, 301);
+    }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChat(request, env);

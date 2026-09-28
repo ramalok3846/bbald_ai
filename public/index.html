@@ -40,6 +40,7 @@
         <span class="credit-dot"></span>
         <span id="creditValue">100</span> 크레딧
       </div>
+      <button id="noticesBtn" class="settings-btn">📢 공지사항</button>
       <button id="settingsBtn" class="settings-btn">⚙️ 설정</button>
     </div>
   </aside>
@@ -58,13 +59,14 @@
           <option value="gemini">Gemini</option>
         </select>
         <select id="modelSelect" class="select">
-          <option value="fable-5.1">Fable 5.1</option>
-          <option value="sonnet-5" selected>Sonnet 5</option>
-          <option value="opus-5.5">Opus 5.5</option>
-          <option value="haiku-4.5">Haiku 4.5</option>
+          <option value="haiku-4.5">⚡ 빨드 라이트</option>
+          <option value="sonnet-5" selected>🦕 빨드 기본</option>
+          <option value="opus-5.5">🧠 빨드 딥씽킹</option>
+          <option value="fable-5.1">📖 빨드 스토리</option>
         </select>
       </div>
     </header>
+    <p class="model-desc" id="modelDesc">균형잡힌 두뇌 — 평소엔 이걸로 쓰면 딱 좋다능!</p>
 
     <section class="chat-wrap">
       <section class="chat" id="chat">
@@ -149,6 +151,32 @@
           <button type="button" id="changePwBtn" class="secondary-btn">변경</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="noticesBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <span>📢 공지사항</span>
+      <button class="modal-close" id="closeNotices">✕</button>
+    </div>
+    <div class="modal-body notices-body">
+      <article class="notice-card">
+        <img class="notice-image" src="icon-256.png" alt="빨드 스티커 이벤트" />
+        <h3>🎁 랜덤 빨드 스티커 이벤트</h3>
+        <p>채팅 중 화면 아무 곳에나 빨드 스티커가 잠깐(4초) 나타난다능! 놓치기 전에 클릭하면 크레딧 10~30개를 랜덤으로 준다능. 눈 크게 뜨고 있어바!</p>
+      </article>
+      <article class="notice-card">
+        <img class="notice-image" src="icon-256.png" alt="가입 보너스 이벤트" />
+        <h3>🎉 첫 가입 크레딧 보너스</h3>
+        <p>로그인/회원가입하면 계정당 1회, 크레딧 100개를 바로 선물로 준다능! 게스트로도 쓸 수 있지만, 로그인하면 더 든든하다능.</p>
+      </article>
+      <article class="notice-card">
+        <img class="notice-image" src="icon-256.png" alt="노을 모드 안내" />
+        <h3>🌇 노을 모드 안내</h3>
+        <p>한국시간 오후 3시가 지나면 빨드가 아주 가끔 조금 또렷해진다능 (완전 똑똑해지는 건 아니고 살짝!). 그 전엔 평소처럼 멍청하고 웃긴 빨드를 만날 수 있다능.</p>
+      </article>
     </div>
   </div>
 </div>

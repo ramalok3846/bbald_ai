@@ -69,13 +69,13 @@ export function tryDumbMathOverride(userText, isSmart, rand = Math.random) {
   const a = Number(aRaw);
   const b = Number(bRaw);
 
-  if (isSmart) {
-    // 똑똑 모드: 정답은 맞히지만 여전히 빨드스러운 말투 유지
+  if (isSmart && rand() < 0.6) {
+    // 노을 모드: 가끔(60%) 정답을 맞히지만, 여전히 빨드스러운 말투로 담백하게
     let answer;
     if (op === "+") answer = a + b;
     else if (op === "-") answer = a - b;
     else answer = a * b;
-    return `음... 노을 진 빨드는 계산 좀 한다능! ${aRaw}${op}${bRaw} = ${answer} 이다능! 똑똑하지?! 😎`;
+    return `음... ${aRaw}${op}${bRaw} = ${answer}... 인 것 같다능? 노을 질 땐 빨드도 쬐끔 또렷해진다능 🌇`;
   }
 
   const pool = op === "+" || op === "-" ? DUMB_MATH_LINES : DUMB_MULT_LINES;
@@ -85,8 +85,8 @@ export function tryDumbMathOverride(userText, isSmart, rand = Math.random) {
 
 export function buildSystemPrompt(isSmart) {
   const smartNote = isSmart
-    ? "지금은 한국 시간(KST) 오후 3시가 지나 노을이 지는 시간대라, 빨드는 평소보다 조금 더 똑똑하고 논리적으로 대답할 수 있다. 그래도 말투는 귀엽고 살짝 어수룩하게 유지한다."
-    : "지금은 노을이 지기 전 시간대라 빨드는 매우 멍청하고 순진하다. 1+1 같은 아주 쉬운 계산도 못 풀고, 어려운 질문에는 엉뚱하고 웃긴 대답을 한다.";
+    ? "지금은 한국 시간(KST) 오후 3시가 지난 노을 시간대다. 그래도 빨드가 갑자기 똑똑한 비서로 변하면 안 된다 — 말투와 성격은 그대로 멍청하고 장난스럽게 유지하되, 아주 가끔(전부는 아니고 가끔만) 문장 한두 개 정도 평소보다 조금 더 또렷하거나 그럴듯한 말을 섞는 정도로만 살짝 티를 낸다."
+    : "지금은 노을이 지기 전 시간대라 빨드는 평소처럼 매우 멍청하고 순진하다. 1+1 같은 아주 쉬운 계산도 못 풀고, 어려운 질문에는 엉뚱하고 웃긴 대답을 한다.";
 
   return [
     "너는 '빨드'라는 이름의 빨간색 봉제인형 캐릭터야. 원래는 사람이 들고 다니는 공룡 모양 인형이었는데 AI가 되었어.",
@@ -115,16 +115,58 @@ export function maybeSnackLine(creditCost, rand = Math.random) {
 }
 
 export const BUILTIN_KEYWORDS = [
-  { test: /안녕|hi|hello|하이/i, reply: "안뇽!! 빨드다능! 오늘도 신나게 놀아보자! 🦕" },
-  { test: /이름|누구/i, reply: "빨드! 원래는 인형이었는데 지금은 AI가 됐다능! 히히" },
-  { test: /사랑/i, reply: "빨드도 너 조아한다능! 뿌잉뿌잉 💕" },
-  { test: /고마|thank/i, reply: "웅웅! 빨드는 도움이 됐다니 기쁘다능~ 쵸~~꼴--륏 처럼 달콤한 기분!" },
-  { test: /초콜릿|쵸콜릿|chocolate/i, reply: "쵸~~꼴--륏!! 빨드가 젤 조아하는 단어다능 🍫🦕" },
+  {
+    test: /안녕|hi|hello|하이/i,
+    replies: [
+      "안뇽!! 빨드다능! 오늘도 신나게 놀아보자! 🦕",
+      "하이하이~ 빨드 왔다능! 오늘은 뭐하고 놀까!",
+      "오옹 안뇽! 빨드 심심했는데 잘 왔다능 히히",
+    ],
+  },
+  {
+    test: /이름|누구/i,
+    replies: [
+      "빨드! 원래는 인형이었는데 지금은 AI가 됐다능! 히히",
+      "나? 빨드다능! 빨간색 공룡 인형 출신이다능 🦕",
+      "빨드라고 한다능~ 기억해주면 조아!",
+    ],
+  },
+  {
+    test: /사랑/i,
+    replies: [
+      "빨드도 너 조아한다능! 뿌잉뿌잉 💕",
+      "사랑이라니 부끄럽다능... 그래도 빨드도 좋아한다능!",
+    ],
+  },
+  {
+    test: /고마|thank/i,
+    replies: [
+      "웅웅! 빨드는 도움이 됐다니 기쁘다능~ 쵸~~꼴--륏 처럼 달콤한 기분!",
+      "헤헤 별거 아니다능! 또 필요하면 불러줘!",
+    ],
+  },
+  {
+    test: /초콜릿|쵸콜릿|chocolate/i,
+    replies: [
+      "쵸~~꼴--륏!! 빨드가 젤 조아하는 단어다능 🍫🦕",
+      "쵸꼬렛 얘기하니까 배고파졌다능... 나눠줄래?",
+    ],
+  },
 ];
 
-export function builtinReply(userText) {
+const FALLBACK_REPLIES = [
+  "음... 그건 빨드도 아직 잘 모르겠다능! 설정에서 더 똑똑한 AI(제미나이, 챗지피티, 클로드 등)를 연결해주면 더 잘 대답할 수 있을 것 같다능! 히히 🦕",
+  "어려운 질문이다능... 빨드 머리에서 연기 난다능 🌫️ 다른 거 물어봐줄래?",
+  "그건 빨드 사전엔 없는 말이다능! 근데 그냥 놀아줄 순 있다능 히히",
+  "음... 잘 모르겠는데 그냥 웅웅 해볼게다능! 웅웅!",
+  "빨드 뇌가 지금 딴생각 하고 있었다능... 다시 한번 말해줄래?",
+];
+
+export function builtinReply(userText, rand = Math.random) {
   for (const k of BUILTIN_KEYWORDS) {
-    if (k.test.test(userText)) return k.reply;
+    if (k.test.test(userText)) {
+      return k.replies[Math.floor(rand() * k.replies.length)];
+    }
   }
-  return "음... 그건 빨드도 아직 잘 모르겠다능! 설정에서 더 똑똑한 AI(제미나이, 챗지피티, 클로드 등)를 연결해주면 더 잘 대답할 수 있을 것 같다능! 히히 🦕";
+  return FALLBACK_REPLIES[Math.floor(rand() * FALLBACK_REPLIES.length)];
 }
