@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>빨드 AI</title>
 <meta name="description" content="멍청하지만 사랑스러운 빨간 공룡 인형 '빨드'와 대화하는 AI 서비스" />
-<link rel="icon" href="/favicon.png" />
-<link rel="stylesheet" href="/style.css" />
+<link rel="icon" href="favicon.png" />
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
 <div class="app">
 
   <aside class="sidebar">
     <div class="brand">
-      <img class="brand-icon" src="/icon-64.png" alt="빨드" />
+      <img class="brand-icon" src="icon-64.png" alt="빨드" />
       <span class="brand-name">빨드 AI</span>
     </div>
 
@@ -25,6 +25,15 @@
         <span class="conv-title">빨드와의 대화</span>
       </div>
     </nav>
+
+    <div class="account-box" id="accountBox">
+      <div class="account-avatar" id="accountAvatar">USER</div>
+      <div class="account-info">
+        <span class="account-name" id="accountName">게스트</span>
+        <span class="account-sub" id="accountSub">로그인하면 가입 보너스!</span>
+      </div>
+      <button id="authBtn" class="auth-btn">로그인</button>
+    </div>
 
     <div class="sidebar-footer">
       <div class="credit-pill" id="creditPill">
@@ -57,18 +66,33 @@
       </div>
     </header>
 
-    <section class="chat" id="chat">
-      <div class="msg assistant">
-        <img class="avatar" src="/icon-64.png" alt="빨드" />
-        <div class="bubble">
-          안뇽!! 빠드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)
+    <section class="chat-wrap">
+      <section class="chat" id="chat">
+        <div class="msg assistant">
+          <img class="avatar" src="icon-64.png" alt="빨드" />
+          <div class="bubble">
+            안뇽!! 빠드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)
+          </div>
         </div>
-      </div>
+      </section>
+      <button class="sticker" id="stickerBtn" hidden title="빠드 스티커! 눌러봐!">
+        <img src="icon-64.png" alt="빨드 스티커" />
+        <span class="sticker-badge">+20</span>
+      </button>
     </section>
 
     <form class="composer" id="composer">
-      <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?)" rows="1"></textarea>
-      <button type="submit" class="send-btn" id="sendBtn">전송</button>
+      <div class="attach-preview" id="attachPreview" hidden>
+        <img id="attachThumb" alt="첨부 이미지 미리보기" />
+        <button type="button" id="attachRemove" class="attach-remove">✕</button>
+      </div>
+      <div class="composer-row">
+        <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부">📎</button>
+        <button type="button" id="attachUrlBtn" class="icon-btn" title="이미지 URL로 첨부">🔗</button>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+        <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?) · 이미지 붙여넣기(Ctrl+V)도 가능" rows="1"></textarea>
+        <button type="submit" class="send-btn" id="sendBtn">전송</button>
+      </div>
     </form>
   </main>
 </div>
@@ -80,6 +104,11 @@
       <button class="modal-close" id="closeSettings">✕</button>
     </div>
     <div class="modal-body">
+      <label class="field">
+        <span>프로필 사진 URL</span>
+        <input type="text" id="profilePicUrl" placeholder="https://... 또는 비워두면 USER 아이콘" />
+      </label>
+
       <label class="field">
         <span>Claude API 키</span>
         <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
@@ -103,10 +132,29 @@
       </div>
 
       <p class="hint">현재 KST 시간: <span id="kstClock">--:--</span> · <span id="smartState">멍청 모드</span> (오후 3시가 지나면 노을 설정으로 조금 똑똑해진다능)</p>
+
+      <div class="divider"></div>
+
+      <div id="accountSettings">
+        <p class="hint">계정 (Firebase 설정이 완료되면 사용 가능):</p>
+        <label class="field">
+          <span>이메일 변경</span>
+          <input type="email" id="newEmail" placeholder="new@email.com" />
+        </label>
+        <div class="field-row">
+          <label class="field">
+            <span>새 비밀번호</span>
+            <input type="password" id="newPassword" placeholder="새 비밀번호" />
+          </label>
+          <button type="button" id="changePwBtn" class="secondary-btn">변경</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="firebase-config.js"></script>
+<script type="module" src="auth.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

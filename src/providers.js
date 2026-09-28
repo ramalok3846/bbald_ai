@@ -7,11 +7,34 @@ export const CLAUDE_MODELS = {
   "haiku-4.5": "claude-haiku-4-5-20251001",
 };
 
-export async function callAnthropic({ apiKey, model, systemPrompt, history, message }) {
+function dataUrlToBase64(dataUrl) {
+  const comma = dataUrl.indexOf(",");
+  return comma === -1 ? dataUrl : dataUrl.slice(comma + 1);
+}
+function mimeFromDataUrl(dataUrl, fallback) {
+  const m = /^data:([^;]+);/.exec(dataUrl || "");
+  return m ? m[1] : fallback;
+}
+
+export async function callAnthropic({ apiKey, model, systemPrompt, history, message, image }) {
   const modelId = CLAUDE_MODELS[model] || CLAUDE_MODELS["sonnet-5"];
+  let userContent = message;
+  if (image?.dataUrl) {
+    userContent = [
+      { type: "text", text: message || "이 사진 좀 봐줘!" },
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: mimeFromDataUrl(image.dataUrl, image.mimeType || "image/png"),
+          data: dataUrlToBase64(image.dataUrl),
+        },
+      },
+    ];
+  }
   const messages = [
     ...history.map((h) => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.content })),
-    { role: "user", content: message },
+    { role: "user", content: userContent },
   ];
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -32,11 +55,18 @@ export async function callAnthropic({ apiKey, model, systemPrompt, history, mess
   return data.content?.[0]?.text ?? "";
 }
 
-export async function callOpenAI({ apiKey, systemPrompt, history, message }) {
+export async function callOpenAI({ apiKey, systemPrompt, history, message, image }) {
+  let userContent = message;
+  if (image?.dataUrl) {
+    userContent = [
+      { type: "text", text: message || "이 사진 좀 봐줘!" },
+      { type: "image_url", image_url: { url: image.dataUrl } },
+    ];
+  }
   const messages = [
     { role: "system", content: systemPrompt },
     ...history.map((h) => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.content })),
-    { role: "user", content: message },
+    { role: "user", content: userContent },
   ];
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -51,13 +81,22 @@ export async function callOpenAI({ apiKey, systemPrompt, history, message }) {
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-export async function callGemini({ apiKey, systemPrompt, history, message }) {
+export async function callGemini({ apiKey, systemPrompt, history, message, image }) {
+  const userParts = [{ text: message || "이 사진 좀 봐줘!" }];
+  if (image?.dataUrl) {
+    userParts.push({
+      inlineData: {
+        mimeType: mimeFromDataUrl(image.dataUrl, image.mimeType || "image/png"),
+        data: dataUrlToBase64(image.dataUrl),
+      },
+    });
+  }
   const contents = [
     ...history.map((h) => ({
       role: h.role === "assistant" ? "model" : "user",
       parts: [{ text: h.content }],
     })),
-    { role: "user", parts: [{ text: message }] },
+    { role: "user", parts: userParts },
   ];
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url, {

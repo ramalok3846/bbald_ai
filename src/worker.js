@@ -39,9 +39,10 @@ async function handleChat(request, env) {
     model = "sonnet-5",
     apiKey = "",
     credits = 100,
+    image = null, // { dataUrl, mimeType } | null
   } = body;
 
-  if (typeof message !== "string" || !message.trim()) {
+  if ((typeof message !== "string" || !message.trim()) && !image) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
@@ -60,7 +61,7 @@ async function handleChat(request, env) {
   }
 
   // 아주 쉬운 사칙연산은 빨드의 개그 두뇌가 직접 처리 (진짜 AI 호출 없이, 크레딧 절약!)
-  const mathOverride = tryDumbMathOverride(message, isSmart);
+  const mathOverride = !image && tryDumbMathOverride(message, isSmart);
   if (mathOverride) {
     return json({
       reply: mathOverride,
@@ -74,19 +75,24 @@ async function handleChat(request, env) {
   const systemPrompt = buildSystemPrompt(isSmart);
   let reply;
   try {
-    if (provider === "builtin") {
-      reply = builtinReply(message);
-    } else if (provider === "cloudflare") {
-      reply = await callCloudflareAI({ env, systemPrompt, history, message });
+    if (provider === "builtin" || provider === "cloudflare") {
+      // 빨드 기본 두뇌 / Cloudflare Workers AI는 진짜 이미지 분석은 안 하고 귀엽게 반응만 한다.
+      if (image && provider === "builtin") {
+        reply = "오오 사진이다! 근데 빠드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
+      } else if (provider === "builtin") {
+        reply = builtinReply(message);
+      } else {
+        reply = await callCloudflareAI({ env, systemPrompt, history, message: image ? `${message}\n(사용자가 이미지를 첨부했지만 너는 이미지를 볼 수 없으니, 궁금해하는 티만 내며 귀엽게 반응해라)` : message });
+      }
     } else if (provider === "anthropic") {
       if (!apiKey) return json({ error: "클로드 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callAnthropic({ apiKey, model, systemPrompt, history, message });
+      reply = await callAnthropic({ apiKey, model, systemPrompt, history, message, image });
     } else if (provider === "openai") {
       if (!apiKey) return json({ error: "챗지피티 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callOpenAI({ apiKey, systemPrompt, history, message });
+      reply = await callOpenAI({ apiKey, systemPrompt, history, message, image });
     } else if (provider === "gemini") {
       if (!apiKey) return json({ error: "제미나이 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callGemini({ apiKey, systemPrompt, history, message });
+      reply = await callGemini({ apiKey, systemPrompt, history, message, image });
     } else {
       return json({ error: "알 수 없는 provider다능" }, { status: 400 });
     }
