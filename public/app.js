@@ -440,7 +440,7 @@
       creditValueEl.textContent = state.credits;
       creditInput.value = state.credits;
       saveState();
-      addMessage("assistant", `짠! 빠드 스티커 찾았다능! 보너스 크레딧 +${STICKER_BONUS} 선물이다능! 🎁🦕`, { extraClass: "snack" });
+      addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${STICKER_BONUS} 선물이다능! 🎁🦕`, { extraClass: "snack" });
       scheduleSticker();
     };
   }

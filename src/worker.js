@@ -78,7 +78,7 @@ async function handleChat(request, env) {
     if (provider === "builtin" || provider === "cloudflare") {
       // 빨드 기본 두뇌 / Cloudflare Workers AI는 진짜 이미지 분석은 안 하고 귀엽게 반응만 한다.
       if (image && provider === "builtin") {
-        reply = "오오 사진이다! 근데 빠드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
+        reply = "오오 사진이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
       } else if (provider === "builtin") {
         reply = builtinReply(message);
       } else {
