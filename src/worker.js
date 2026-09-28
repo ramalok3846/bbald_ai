@@ -1,6 +1,5 @@
 import {
-  getKstNow,
-  isSmartHour,
+  getSmartInfo,
   tryDumbMathOverride,
   buildSystemPrompt,
   applyPersonaFlourish,
@@ -47,8 +46,7 @@ async function handleChat(request, env) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
-  const { hour } = getKstNow();
-  const isSmart = isSmartHour(hour);
+  const { isSmart, level, sunsetLabel } = getSmartInfo();
   const cost = CREDIT_COST[provider] ?? 3;
 
   if (credits < cost) {
@@ -62,7 +60,7 @@ async function handleChat(request, env) {
   }
 
   // 아주 쉬운 사칙연산은 빨드의 개그 두뇌가 직접 처리 (진짜 AI 호출 없이, 크레딧 절약!)
-  const mathOverride = !image && tryDumbMathOverride(message, isSmart);
+  const mathOverride = !image && tryDumbMathOverride(message, level);
   if (mathOverride) {
     return json({
       reply: mathOverride,
@@ -88,7 +86,7 @@ async function handleChat(request, env) {
     );
   }
 
-  const systemPrompt = buildSystemPrompt(isSmart);
+  const systemPrompt = buildSystemPrompt(level);
   let reply;
   try {
     if (provider === "builtin" || provider === "cloudflare") {
@@ -116,7 +114,7 @@ async function handleChat(request, env) {
     return json({ error: `빨드가 넘어졌다능... (${err.message})` }, { status: 502 });
   }
 
-  reply = applyPersonaFlourish(reply, isSmart);
+  reply = applyPersonaFlourish(reply, level);
   const newCredits = Math.max(0, credits - cost);
   const snack = maybeSnackLine(cost);
 
@@ -124,6 +122,8 @@ async function handleChat(request, env) {
     reply,
     credits: newCredits,
     isSmart,
+    smartLevel: level,
+    sunset: sunsetLabel,
     snack: snack || false,
     provider,
     dailyRemaining: limitCheck.remaining,
@@ -139,8 +139,7 @@ export default {
     }
 
     if (url.pathname === "/api/time") {
-      const { hour, minute, source } = getKstNow();
-      return json({ hour, minute, source, isSmart: isSmartHour(hour) });
+      return json(getSmartInfo());
     }
 
     if (env.ASSETS) {

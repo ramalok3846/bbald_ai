@@ -10,8 +10,9 @@
 </head>
 <body>
 <div class="app">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <img class="brand-icon" src="icon-64.png" alt="빨드" />
       <span class="brand-name">빨드 AI</span>
@@ -48,6 +49,7 @@
   <main class="main">
     <header class="topbar">
       <div class="topbar-left">
+        <button id="menuToggle" class="menu-toggle" aria-label="메뉴 열기">☰</button>
         <span class="mood-badge" id="moodBadge">🌙 아직 멍청한 시간</span>
       </div>
       <div class="topbar-right">
@@ -183,6 +185,9 @@
 
 <script src="firebase-config.js"></script>
 <script type="module" src="auth.js"></script>
+<!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
+     서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

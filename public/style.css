@@ -519,6 +519,74 @@ body {
   line-height: 1.5;
 }
 
+/* ---------- 화면 비율 자동 인식 (모바일 / PC 반응형) ---------- */
+.menu-toggle {
+  display: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  width: 36px;
+  height: 36px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(58, 43, 74, 0.35);
+  z-index: 39;
+}
+.sidebar-backdrop.open { display: block; }
+
+/* 메시지/이미지가 화면 폭에 비례해서 줄어들도록(초광폭 PC ~ 좁은 모바일 공통 대응) */
+.msg { max-width: min(720px, 88vw); }
+.bubble-image { max-width: min(260px, 60vw); max-height: min(260px, 60vw); }
+
 @media (max-width: 720px) {
-  .sidebar { display: none; }
+  .menu-toggle { display: inline-flex; align-items: center; justify-content: center; }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 82vw;
+    max-width: 300px;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    z-index: 40;
+    box-shadow: var(--shadow-soft);
+  }
+  .sidebar.open { transform: translateX(0); }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .topbar-left { flex: 1 1 auto; min-width: 0; gap: 8px; }
+  .mood-badge {
+    font-size: 0.72rem;
+    padding: 5px 9px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar-right {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+  .select { flex: 1 1 45%; min-width: 0; font-size: 0.8rem; }
+  .model-desc { padding: 6px 14px; text-align: left; }
+
+  .chat { padding: 14px; }
+  .composer { padding: 12px 14px 16px; }
+  .icon-btn { width: 36px; height: 36px; font-size: 0.95rem; }
+}
+
+@media (max-width: 420px) {
+  .select { flex: 1 1 100%; }
+  .brand-name { font-size: 1rem; }
 }

@@ -1,14 +1,23 @@
 // 빨드 (Ppaldeu) 캐릭터 두뇌 — 멍청하지만 사랑스러운 빨간 공룡 인형 AI 성격 엔진.
-// 노을(오후 3시 KST)이 지면 살짝 똑똑해지는 설정을 실시간으로 반영한다.
+// 오후 3시부터 "그날의 실제 서울 일몰 시각"까지 서서히 똑똑해졌다가, 일몰 이후
+// 다시 서서히 멍청해지는 설정을 suncalc로 실시간 계산한다.
 
-export function getKstNow() {
+import SunCalc from "suncalc";
+
+const SEOUL_LAT = 37.5665;
+const SEOUL_LON = 126.978;
+const THREE_PM_MIN = 15 * 60; // 오후 3시 = 하루 중 900분째
+const DEFAULT_SUNSET_MIN = 18 * 60 + 30; // suncalc마저 실패했을 때 쓰는 서울 평균 일몰 근사치(18:30)
+const FADE_OUT_MINUTES = 180; // 일몰 이후 다시 멍청해지기까지 걸리는 시간(3시간)
+
+export function getKstNow(date = new Date()) {
   try {
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: "Asia/Seoul",
       hour12: false,
       year: "numeric", month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit", second: "2-digit",
-    }).formatToParts(new Date());
+    }).formatToParts(date);
     const get = (t) => parts.find((p) => p.type === t)?.value;
     return {
       hour: Number(get("hour")),
@@ -17,14 +26,63 @@ export function getKstNow() {
     };
   } catch (e) {
     // 인터넷/타임존 DB 접근이 안 되면 로컬 컴퓨터 시간을 그대로 사용한다.
-    const d = new Date();
-    return { hour: d.getHours(), minute: d.getMinutes(), source: "local-fallback" };
+    return { hour: date.getHours(), minute: date.getMinutes(), source: "local-fallback" };
   }
 }
 
-// 오후 3시(15시) ~ 자정 이전까지 "노을이 진" 시간대로 보고 똑똑 모드 발동
-export function isSmartHour(hour) {
-  return hour >= 15 && hour < 24;
+// 주어진 시각(UTC Date)을 "그 순간의 KST 하루 중 분(0~1439)"으로 변환한다.
+function kstMinutesOfDay(date) {
+  const utcMinutes = date.getUTCHours() * 60 + date.getUTCMinutes();
+  return (utcMinutes + 9 * 60) % (24 * 60);
+}
+
+// 오늘(서울 기준) 실제 일몰 시각을 "KST 하루 중 분"으로 반환. suncalc 계산이
+// 실패하면(예: 극단적 날짜 오류 등) 평균적인 서울 일몰 시각으로 대체한다.
+export function getSunsetKstMinutes(date = new Date()) {
+  try {
+    const times = SunCalc.getTimes(date, SEOUL_LAT, SEOUL_LON);
+    if (times?.sunset instanceof Date && !Number.isNaN(times.sunset.getTime())) {
+      return kstMinutesOfDay(times.sunset);
+    }
+  } catch (e) {
+    // suncalc 자체는 인터넷이 필요 없지만(순수 계산), 혹시 모를 오류에 대비한다.
+  }
+  return DEFAULT_SUNSET_MIN;
+}
+
+// 0(완전 멍청) ~ 1(노을 절정, 제일 또렷) 사이의 "똑똑함 정도"를 계산한다.
+// 오후 3시부터 서서히 올라가 일몰 시각에 정점을 찍고, 이후 3시간에 걸쳐 다시 내려간다.
+export function computeSmartLevel(hour, minute, sunsetKstMinutes) {
+  const t = hour * 60 + minute;
+  if (sunsetKstMinutes <= THREE_PM_MIN) {
+    // 극단적으로 일몰이 이른 경우(사실상 발생 안 함) 방어적으로 3시 이후 항상 절정 취급
+    return t >= THREE_PM_MIN ? 1 : 0;
+  }
+  if (t < THREE_PM_MIN) return 0;
+  if (t <= sunsetKstMinutes) {
+    return (t - THREE_PM_MIN) / (sunsetKstMinutes - THREE_PM_MIN);
+  }
+  const fadeEnd = sunsetKstMinutes + FADE_OUT_MINUTES;
+  if (t <= fadeEnd) {
+    return 1 - (t - sunsetKstMinutes) / FADE_OUT_MINUTES;
+  }
+  return 0;
+}
+
+// 서버/클라이언트 공용: 지금 이 순간의 "노을 똑똑함 정보"를 한 번에 계산한다.
+export function getSmartInfo(date = new Date()) {
+  const { hour, minute, source } = getKstNow(date);
+  const sunsetKstMinutes = getSunsetKstMinutes(date);
+  const level = computeSmartLevel(hour, minute, sunsetKstMinutes);
+  return {
+    hour,
+    minute,
+    source,
+    sunsetKstMinutes,
+    sunsetLabel: `${String(Math.floor(sunsetKstMinutes / 60)).padStart(2, "0")}:${String(sunsetKstMinutes % 60).padStart(2, "0")}`,
+    level, // 0~1
+    isSmart: level > 0.05,
+  };
 }
 
 const DUMB_MATH_LINES = [
@@ -62,15 +120,16 @@ function fillTemplate(tpl, a, b) {
 // 아주 단순한 사칙연산 패턴만 감지 (예: "1+1", "3 * 4", "5-2는?")
 const MATH_RE = /(-?\d+(?:\.\d+)?)\s*([+\-*x×])\s*(-?\d+(?:\.\d+)?)/;
 
-export function tryDumbMathOverride(userText, isSmart, rand = Math.random) {
+export function tryDumbMathOverride(userText, level, rand = Math.random) {
   const m = userText.match(MATH_RE);
   if (!m) return null;
   const [, aRaw, op, bRaw] = m;
   const a = Number(aRaw);
   const b = Number(bRaw);
 
-  if (isSmart && rand() < 0.6) {
-    // 노을 모드: 가끔(60%) 정답을 맞히지만, 여전히 빨드스러운 말투로 담백하게
+  // 노을 똑똑함 정도(level)에 비례해서 정답을 맞힐 확률이 오르내린다 (최대 85%,
+  // 일몰 절정이어도 완전히 100% 정확하진 않게 유지 — 그래도 빨드니까).
+  if (rand() < level * 0.85) {
     let answer;
     if (op === "+") answer = a + b;
     else if (op === "-") answer = a - b;
@@ -83,10 +142,17 @@ export function tryDumbMathOverride(userText, isSmart, rand = Math.random) {
   return fillTemplate(line, aRaw, bRaw);
 }
 
-export function buildSystemPrompt(isSmart) {
-  const smartNote = isSmart
-    ? "지금은 한국 시간(KST) 오후 3시가 지난 노을 시간대다. 그래도 빨드가 갑자기 똑똑한 비서로 변하면 안 된다 — 말투와 성격은 그대로 멍청하고 장난스럽게 유지하되, 아주 가끔(전부는 아니고 가끔만) 문장 한두 개 정도 평소보다 조금 더 또렷하거나 그럴듯한 말을 섞는 정도로만 살짝 티를 낸다."
-    : "지금은 노을이 지기 전 시간대라 빨드는 평소처럼 매우 멍청하고 순진하다. 1+1 같은 아주 쉬운 계산도 못 풀고, 어려운 질문에는 엉뚱하고 웃긴 대답을 한다.";
+export function buildSystemPrompt(level = 0) {
+  let smartNote;
+  if (level <= 0.05) {
+    smartNote = "지금은 노을이 지기 한참 전 시간대라 빨드는 평소처럼 매우 멍청하고 순진하다. 1+1 같은 아주 쉬운 계산도 못 풀고, 어려운 질문에는 엉뚱하고 웃긴 대답을 한다.";
+  } else if (level <= 0.4) {
+    smartNote = "오후 3시를 막 지나서 노을이 아주 조금씩 다가오는 시간대다. 빨드는 여전히 대부분 멍청하지만, 아주 가끔 문장 하나 정도는 평소보다 살짝 또렷하게 말할 수 있다.";
+  } else if (level <= 0.75) {
+    smartNote = "노을이 점점 가까워지는 시간대다. 빨드는 여전히 장난스럽고 콩글리시 말투를 유지하지만, 이전보다는 좀 더 자주 그럴듯한 문장을 섞어 말할 수 있다.";
+  } else {
+    smartNote = "지금은 오늘 중 노을이 가장 짙은 절정 시간대라 빨드가 하루 중 제일 또렷한 편이다. 그래도 성격 자체는 여전히 멍청하고 장난스러운 개그 캐릭터라는 점은 절대 잃지 않는다 — 완벽하게 똑똑한 비서로 변하면 안 된다.";
+  }
 
   return [
     "너는 '빨드'라는 이름의 빨간색 봉제인형 캐릭터야. 원래는 사람이 들고 다니는 공룡 모양 인형이었는데 AI가 되었어.",
@@ -98,9 +164,10 @@ export function buildSystemPrompt(isSmart) {
   ].join("\n");
 }
 
-export function applyPersonaFlourish(text, isSmart, rand = Math.random) {
+export function applyPersonaFlourish(text, level = 0, rand = Math.random) {
   if (!text) return text;
-  if (!isSmart && rand() < 0.35) {
+  // 노을 절정(level 1)에 가까울수록 콩글리시 추임새를 덜 붙인다 (그래도 완전히 0은 아님).
+  if (rand() < 0.35 * (1 - level)) {
     const f = KONGLISH_FLOURISH[Math.floor(rand() * KONGLISH_FLOURISH.length)];
     return `${text} ${f}`;
   }
