@@ -1,0 +1,14 @@
+{
+  "name": "bbald-ai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "빨드 AI - 멍청하고 귀여운 빨간 공룡 인형 캐릭터 챗봇 (Cloudflare Workers)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

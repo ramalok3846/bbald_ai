@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>빨드 AI</title>
+<meta name="description" content="멍청하지만 사랑스러운 빨간 공룡 인형 '빨드'와 대화하는 AI 서비스" />
+<link rel="icon" href="/favicon.png" />
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-icon" src="/icon-64.png" alt="빨드" />
+      <span class="brand-name">빨드 AI</span>
+    </div>
+
+    <button id="newChatBtn" class="new-chat-btn">+ 새 대화</button>
+
+    <nav class="conv-list">
+      <div class="conv-item active">
+        <span class="conv-emoji">🦕</span>
+        <span class="conv-title">빨드와의 대화</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="credit-pill" id="creditPill">
+        <span class="credit-dot"></span>
+        <span id="creditValue">100</span> 크레딧
+      </div>
+      <button id="settingsBtn" class="settings-btn">⚙️ 설정</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="mood-badge" id="moodBadge">🌙 아직 멍청한 시간</span>
+      </div>
+      <div class="topbar-right">
+        <select id="providerSelect" class="select">
+          <option value="builtin">빨드 기본 (무료)</option>
+          <option value="cloudflare">Cloudflare Workers AI</option>
+          <option value="anthropic">Claude</option>
+          <option value="openai">ChatGPT</option>
+          <option value="gemini">Gemini</option>
+        </select>
+        <select id="modelSelect" class="select">
+          <option value="fable-5.1">Fable 5.1</option>
+          <option value="sonnet-5" selected>Sonnet 5</option>
+          <option value="opus-5.5">Opus 5.5</option>
+          <option value="haiku-4.5">Haiku 4.5</option>
+        </select>
+      </div>
+    </header>
+
+    <section class="chat" id="chat">
+      <div class="msg assistant">
+        <img class="avatar" src="/icon-64.png" alt="빨드" />
+        <div class="bubble">
+          안뇽!! 빠드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)
+        </div>
+      </div>
+    </section>
+
+    <form class="composer" id="composer">
+      <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?)" rows="1"></textarea>
+      <button type="submit" class="send-btn" id="sendBtn">전송</button>
+    </form>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="settingsBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <span>⚙️ 설정</span>
+      <button class="modal-close" id="closeSettings">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="field">
+        <span>Claude API 키</span>
+        <input type="password" id="key-anthropic" placeholder="sk-ant-..." />
+      </label>
+      <label class="field">
+        <span>OpenAI(ChatGPT) API 키</span>
+        <input type="password" id="key-openai" placeholder="sk-..." />
+      </label>
+      <label class="field">
+        <span>Gemini API 키</span>
+        <input type="password" id="key-gemini" placeholder="AIza..." />
+      </label>
+      <p class="hint">API 키는 이 브라우저에만 저장되고, 서버에는 저장되지 않는다능. Cloudflare Workers AI는 별도 키 없이 바로 사용 가능!</p>
+
+      <div class="field-row">
+        <label class="field">
+          <span>현재 크레딧</span>
+          <input type="number" id="creditInput" min="0" />
+        </label>
+        <button type="button" id="resetCreditsBtn" class="secondary-btn">100으로 충전</button>
+      </div>
+
+      <p class="hint">현재 KST 시간: <span id="kstClock">--:--</span> · <span id="smartState">멍청 모드</span> (오후 3시가 지나면 노을 설정으로 조금 똑똑해진다능)</p>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
