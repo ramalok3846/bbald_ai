@@ -112,6 +112,17 @@ export async function callGemini({ apiKey, systemPrompt, history, message, image
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
+// Workers AI 모델 카탈로그는 종종 바뀌고 예고 없이 폐기(deprecate)된다.
+// env.WORKERS_AI_MODEL(대시보드 환경변수)로 원하는 모델을 지정할 수 있고,
+// 지정 안 하거나 그 모델이 죽었으면 아래 후보들을 순서대로 시도한다.
+const WORKERS_AI_FALLBACK_MODELS = [
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/meta/llama-3.1-8b-instruct-fp8",
+  "@cf/meta/llama-3.1-8b-instruct-fast",
+  "@cf/meta/llama-3.1-8b-instruct",
+  "@cf/meta/llama-3-8b-instruct",
+];
+
 export async function callCloudflareAI({ env, systemPrompt, history, message }) {
   if (!env.AI) throw new Error("Cloudflare Workers AI 바인딩(AI)이 설정되어 있지 않다능!");
   const messages = [
@@ -119,6 +130,19 @@ export async function callCloudflareAI({ env, systemPrompt, history, message }) 
     ...history.map((h) => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.content })),
     { role: "user", content: message },
   ];
-  const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", { messages });
-  return result.response ?? "";
+
+  const candidates = env.WORKERS_AI_MODEL
+    ? [env.WORKERS_AI_MODEL, ...WORKERS_AI_FALLBACK_MODELS]
+    : WORKERS_AI_FALLBACK_MODELS;
+
+  let lastErr;
+  for (const modelId of candidates) {
+    try {
+      const result = await env.AI.run(modelId, { messages });
+      return result.response ?? "";
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new Error(`모든 Workers AI 모델 후보가 실패했다능 (마지막 오류: ${lastErr?.message || lastErr})`);
 }

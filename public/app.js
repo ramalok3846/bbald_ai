@@ -6,8 +6,7 @@
   const providerSelect = document.getElementById("providerSelect");
   const modelSelect = document.getElementById("modelSelect");
   const creditValueEl = document.getElementById("creditValue");
-  const creditInput = document.getElementById("creditInput");
-  const resetCreditsBtn = document.getElementById("resetCreditsBtn");
+  const creditDisplay = document.getElementById("creditDisplay");
   const moodBadge = document.getElementById("moodBadge");
   const kstClock = document.getElementById("kstClock");
   const smartState = document.getElementById("smartState");
@@ -45,8 +44,6 @@
   const menuToggle = document.getElementById("menuToggle");
 
   const LS_KEY = "bbald_ai_state_v1";
-  const SIGNUP_BONUS = 100; // 첫 가입 시 추가로 얹어주는 크레딧
-  const STICKER_BONUS = 20;
 
   function loadState() {
     try {
@@ -68,8 +65,28 @@
   let pendingAttachment = null; // { dataUrl, mimeType }
   let currentUser = null;
 
-  creditValueEl.textContent = state.credits;
-  creditInput.value = state.credits;
+  // 크레딧은 서버(KV)가 유일한 출처다. localStorage 값은 새로고침 사이 깜빡임을
+  // 줄이기 위한 "마지막으로 본 값" 캐시일 뿐이고, 아래에서 곧바로 서버 값으로
+  // 덮어쓴다 — 설정에서 숫자를 직접 입력해서 바꾸는 기능은 없앴다.
+  function renderCredits(value) {
+    state.credits = value;
+    creditValueEl.textContent = value;
+    if (creditDisplay) creditDisplay.textContent = value;
+    saveState();
+  }
+
+  async function syncCreditsFromServer() {
+    try {
+      const uid = currentUser?.uid || "";
+      const res = await fetch(`api/credits${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.credits === "number") renderCredits(data.credits);
+      }
+    } catch {}
+  }
+
+  renderCredits(state.credits);
   profilePicUrlInput.value = state.profilePic;
   document.getElementById("key-anthropic").value = state.keys.anthropic || "";
   document.getElementById("key-openai").value = state.keys.openai || "";
@@ -108,17 +125,23 @@
     }
   }
 
-  function grantSignupBonusIfNeeded(user) {
+  // 가입 보너스는 서버(KV)가 계정당 1회만 지급을 허용한다 (claimSignupBonus).
+  // 클라이언트는 그냥 요청만 보내고, 결과(granted/amount)를 서버가 알려준다.
+  async function grantSignupBonusIfNeeded(user) {
     if (!user) return;
-    const flagKey = `bbald_signup_bonus_${user.uid}`;
     try {
-      if (!localStorage.getItem(flagKey)) {
-        localStorage.setItem(flagKey, "1");
-        state.credits += SIGNUP_BONUS;
-        creditValueEl.textContent = state.credits;
-        creditInput.value = state.credits;
-        saveState();
-        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 크레딧 ${SIGNUP_BONUS}개 선물이다능! 🎉🦕`);
+      const res = await fetch("api/bonus", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "signup", uid: user.uid }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.granted) {
+        renderCredits(data.balance);
+        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 크레딧 ${data.amount}개 선물이다능! 🎉🦕`);
+      } else if (typeof data.balance === "number") {
+        renderCredits(data.balance);
       }
     } catch {}
   }
@@ -126,8 +149,10 @@
   window.addEventListener("bbald-auth-changed", (e) => {
     currentUser = e.detail.user;
     if (currentUser) {
-      // 구글 로그인 등으로 새로 들어온 사용자에게 첫 가입 보너스 지급 (계정별 1회)
+      // 구글 로그인 등으로 새로 들어온 사용자에게 첫 가입 보너스 지급 (계정별 1회, 서버가 판단)
       grantSignupBonusIfNeeded(currentUser);
+    } else {
+      syncCreditsFromServer();
     }
     renderAccount();
   });
@@ -404,7 +429,7 @@
           provider,
           model,
           apiKey,
-          credits: state.credits,
+          uid: currentUser?.uid || null,
           image: attachment ? { dataUrl: attachment.dataUrl, mimeType: attachment.mimeType } : null,
         }),
       });
@@ -427,15 +452,14 @@
       const data = await res.json();
 
       if (!res.ok) {
+        if (typeof data.credits === "number") renderCredits(data.credits);
         addMessage("assistant", data.error || data.reply || "빨드가 넘어졌다능...", {
           extraClass: data.dailyLimitReached ? "snack" : "error",
         });
       } else {
         addMessage("assistant", data.reply);
         state.history.push({ role: "assistant", content: data.reply });
-        state.credits = data.credits;
-        creditValueEl.textContent = state.credits;
-        creditInput.value = state.credits;
+        renderCredits(data.credits);
         if (data.snack) {
           addMessage("assistant", data.snack, { extraClass: "snack" });
         }
@@ -525,21 +549,7 @@
   bindKeyInput("key-openai", "openai");
   bindKeyInput("key-gemini", "gemini");
 
-  creditInput.addEventListener("change", () => {
-    const v = Math.max(0, Number(creditInput.value) || 0);
-    state.credits = v;
-    creditValueEl.textContent = v;
-    saveState();
-  });
-
-  resetCreditsBtn.addEventListener("click", () => {
-    state.credits = 100;
-    creditValueEl.textContent = 100;
-    creditInput.value = 100;
-    saveState();
-  });
-
-  // ---------------- 무작위 빨드 스티커 이벤트 (크레딧 10~30 랜덤 지급) ----------------
+  // ---------------- 무작위 빨드 스티커 이벤트 (크레딧 10~30 랜덤 지급, 서버가 결정) ----------------
   const stickerBadge = stickerBtn.querySelector(".sticker-badge");
   let stickerTimer = null;
   function scheduleSticker() {
@@ -552,9 +562,7 @@
     const maxY = Math.max(0, bounds.height - 64);
     stickerBtn.style.left = `${Math.random() * maxX}px`;
     stickerBtn.style.top = `${Math.random() * maxY}px`;
-
-    const reward = STICKER_BONUS - 10 + Math.floor(Math.random() * 21); // 10~30
-    stickerBadge.textContent = `+${reward}`;
+    stickerBadge.textContent = "🎁";
     stickerBtn.hidden = false;
 
     const hideTimer = setTimeout(() => {
@@ -562,14 +570,21 @@
       scheduleSticker();
     }, 4000); // 4초만 보이고 사라짐
 
-    stickerBtn.onclick = () => {
+    stickerBtn.onclick = async () => {
       clearTimeout(hideTimer);
       stickerBtn.hidden = true;
-      state.credits += reward;
-      creditValueEl.textContent = state.credits;
-      creditInput.value = state.credits;
-      saveState();
-      addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${reward} 선물이다능! 🎁🦕`, { extraClass: "snack" });
+      try {
+        const res = await fetch("api/bonus", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ type: "sticker", uid: currentUser?.uid || null }),
+        });
+        const data = await res.json();
+        if (data.granted) {
+          renderCredits(data.balance);
+          addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${data.amount} 선물이다능! 🎁🦕`, { extraClass: "snack" });
+        }
+      } catch {}
       scheduleSticker();
     };
   }

@@ -6,7 +6,7 @@
 <title>빨드 AI</title>
 <meta name="description" content="멍청하지만 사랑스러운 빨간 공룡 인형 '빨드'와 대화하는 AI 서비스" />
 <link rel="icon" href="favicon.png" />
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 <div class="app">
@@ -127,13 +127,7 @@
       </label>
       <p class="hint">API 키는 이 브라우저에만 저장되고, 서버에는 저장되지 않는다능. Cloudflare Workers AI는 별도 키 없이 바로 사용 가능!</p>
 
-      <div class="field-row">
-        <label class="field">
-          <span>현재 크레딧</span>
-          <input type="number" id="creditInput" min="0" />
-        </label>
-        <button type="button" id="resetCreditsBtn" class="secondary-btn">100으로 충전</button>
-      </div>
+      <p class="hint">현재 크레딧: <strong id="creditDisplay">100</strong>개 (서버에 저장되며, 대화/이미지 응답마다 차감된다능. 로그인하면 가입 보너스, 채팅 중 랜덤 빨드 스티커를 클릭하면 추가로 받을 수 있다능!)</p>
 
       <p class="hint">현재 KST 시간: <span id="kstClock">--:--</span> · <span id="smartState">멍청 모드</span> (오후 3시가 지나면 노을 설정으로 조금 똑똑해진다능)</p>
 
@@ -183,11 +177,11 @@
   </div>
 </div>
 
-<script src="firebase-config.js"></script>
-<script type="module" src="auth.js"></script>
+<script src="firebase-config.js?v=5"></script>
+<script type="module" src="auth.js?v=5"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>
