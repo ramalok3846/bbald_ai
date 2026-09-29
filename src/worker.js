@@ -24,7 +24,19 @@ function json(data, init = {}) {
   });
 }
 
+// 이 함수 안에서 무슨 일이 생기든(레이트리밋 KV 오류, 예상 못한 예외 등)
+// 절대 JSON이 아닌 응답(=플랫폼 기본 에러 페이지)이 나가면 안 된다. 그게 나가면
+// 클라이언트의 res.json()이 실패해서 "인터넷이 끊겼다능" 같은 엉뚱한 메시지만
+// 뜨고 진짜 원인을 알 수 없게 되기 때문에, 맨 바깥을 한 번 더 try/catch로 감싼다.
 async function handleChat(request, env) {
+  try {
+    return await handleChatInner(request, env);
+  } catch (err) {
+    return json({ error: `빨드한테 예상 못한 문제가 생겼다능... (${err?.message || err})` }, { status: 500 });
+  }
+}
+
+async function handleChatInner(request, env) {
   let body;
   try {
     body = await request.json();
@@ -71,8 +83,15 @@ async function handleChat(request, env) {
     });
   }
 
-  // 하루 사용량 제한 (RATE_LIMIT_KV가 설정돼 있을 때만 실제로 막는다)
-  const limitCheck = await checkAndConsumeDailyLimit(env, request, provider);
+  // 하루 사용량 제한 (RATE_LIMIT_KV가 설정돼 있을 때만 실제로 막는다).
+  // KV 쪽에 문제가 생겨도(바인딩 오류 등) 채팅 자체는 막히면 안 되므로, 실패하면
+  // "제한 없음"으로 취급하고 그냥 통과시킨다.
+  let limitCheck;
+  try {
+    limitCheck = await checkAndConsumeDailyLimit(env, request, provider);
+  } catch (err) {
+    limitCheck = { allowed: true, remaining: null, limit: null, enabled: false };
+  }
   if (!limitCheck.allowed) {
     return json(
       {

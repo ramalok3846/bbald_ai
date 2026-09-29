@@ -393,8 +393,9 @@
     autoResize();
     sendBtn.disabled = true;
 
+    let res;
     try {
-      const res = await fetch("api/chat", {
+      res = await fetch("api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -407,6 +408,22 @@
           image: attachment ? { dataUrl: attachment.dataUrl, mimeType: attachment.mimeType } : null,
         }),
       });
+    } catch (err) {
+      // fetch() 자체가 실패 = 진짜로 네트워크에 못 닿은 경우 (오프라인, DNS 실패 등)
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      addMessage(
+        "assistant",
+        offline
+          ? "빨드 인터넷이 끊겼다능... 다시 시도해줘!"
+          : `빨드한테 요청이 안 갔다능... (${err.message || "네트워크 오류"})`,
+        { extraClass: "error" }
+      );
+      sendBtn.disabled = false;
+      saveState();
+      return;
+    }
+
+    try {
       const data = await res.json();
 
       if (!res.ok) {
@@ -428,7 +445,12 @@
         }
       }
     } catch (err) {
-      addMessage("assistant", "빨드 인터넷이 끊겼다능... 다시 시도해줘!", { extraClass: "error" });
+      // fetch는 성공했는데 응답이 JSON이 아닌 경우 (프록시/서버가 에러 페이지를 돌려준 경우 등)
+      addMessage(
+        "assistant",
+        `빨드 응답을 이해 못했다능... (서버가 이상한 응답을 줬다능, status ${res.status})`,
+        { extraClass: "error" }
+      );
     } finally {
       sendBtn.disabled = false;
       saveState();
