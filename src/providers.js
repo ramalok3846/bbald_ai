@@ -55,7 +55,8 @@ export async function callAnthropic({ apiKey, model, systemPrompt, history, mess
   return data.content?.[0]?.text ?? "";
 }
 
-export async function callOpenAI({ apiKey, systemPrompt, history, message, image }) {
+export async function callOpenAI({ apiKey, model, systemPrompt, history, message, image }) {
+  const modelId = model || "gpt-4o-mini";
   let userContent = message;
   if (image?.dataUrl) {
     userContent = [
@@ -74,14 +75,21 @@ export async function callOpenAI({ apiKey, systemPrompt, history, message, image
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model: "gpt-4o-mini", messages, max_tokens: 400 }),
+    body: JSON.stringify({ model: modelId, messages, max_tokens: 400 }),
   });
   if (!res.ok) throw new Error(`OpenAI API 오류: ${res.status} ${await res.text()}`);
   const data = await res.json();
   return data.choices?.[0]?.message?.content ?? "";
 }
 
-export async function callGemini({ apiKey, systemPrompt, history, message, image }) {
+// Gemini 모델도 Workers AI처럼 예고 없이 구버전이 죽는 경우가 있어서(2.0-flash가
+// 502를 뱉은 사례), 요청한 모델이 안 되면 최신 후보들을 순서대로 다시 시도한다.
+const GEMINI_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.0-flash"];
+
+// accessToken이 있으면(구글 로그인 시 받은 OAuth 액세스 토큰, Generative Language
+// API 권한 스코프 포함) API 키 입력 없이 그 구글 계정 자체의 크레딧/권한으로 호출한다.
+// accessToken이 없으면 기존처럼 사용자가 넣은 API 키(?key=)를 쓴다.
+export async function callGemini({ apiKey, accessToken, model, systemPrompt, history, message, image }) {
   const userParts = [{ text: message || "이 사진 좀 봐줘!" }];
   if (image?.dataUrl) {
     userParts.push({
@@ -98,18 +106,34 @@ export async function callGemini({ apiKey, systemPrompt, history, message, image
     })),
     { role: "user", parts: userParts },
   ];
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents,
-    }),
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents,
   });
-  if (!res.ok) throw new Error(`Gemini API 오류: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+  const candidates = [model, ...GEMINI_FALLBACK_MODELS].filter(Boolean);
+  const seen = new Set();
+  let lastErr;
+  for (const modelId of candidates) {
+    if (seen.has(modelId)) continue;
+    seen.add(modelId);
+    const base = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`;
+    const url = accessToken ? base : `${base}?key=${encodeURIComponent(apiKey)}`;
+    const headers = { "content-type": "application/json" };
+    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+    try {
+      const res = await fetch(url, { method: "POST", headers, body });
+      if (!res.ok) {
+        lastErr = new Error(`Gemini API 오류: ${res.status} ${await res.text()}`);
+        continue; // 이 모델이 죽었거나 없을 수 있으니 다음 후보로
+      }
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Gemini API 호출에 실패했다능");
 }
 
 // Workers AI 모델 카탈로그는 종종 바뀌고 예고 없이 폐기(deprecate)된다.

@@ -78,9 +78,39 @@
   const sidebarBackdrop = document.getElementById("sidebarBackdrop");
   const menuToggle = document.getElementById("menuToggle");
 
-  // 로그인 없이는 못 쓰는 모델(딥씽킹/스토리) — 서버(src/worker.js의
-  // MEMBER_ONLY_MODELS)와 동일한 목록. 게스트는 UI에서부터 아예 고를 수 없게 막는다.
-  const MEMBER_ONLY_MODELS = new Set(["opus-5.5", "fable-5.1"]);
+  // provider별 모델 목록(실제 모델명/설명/비용 배율/로그인 필요 여부) — 서버
+  // (src/worker.js의 MODEL_INFO)와 값이 맞아야 한다. "모델명과 설명, 상세설정"
+  // 요청 반영: provider를 바꾸면 모델 선택도 그 provider의 진짜 모델들로 바뀐다.
+  const MODEL_CATALOG = {
+    builtin: [
+      { value: "default", label: "🦕 빨드 두뇌", desc: "서버에 내장된 빨드만의 반응이다능 (AI 호출 없음, 제일 가벼움)", cost: 1 },
+    ],
+    cloudflare: [
+      { value: "default", label: "☁️ Cloudflare 두뇌", desc: "Cloudflare Workers AI(Llama 계열)로 답한다능", cost: 1 },
+    ],
+    anthropic: [
+      { value: "haiku-4.5", label: "⚡ 빨드 라이트", desc: "claude-haiku-4.5 — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+      { value: "sonnet-5", label: "🦕 빨드 기본", desc: "claude-sonnet-5 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+      { value: "opus-5.5", label: "🧠 빨드 딥씽킹", desc: "claude-opus-5.5 — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+      { value: "fable-5.1", label: "📖 빨드 스토리", desc: "claude-fable-5.1 — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
+    ],
+    openai: [
+      { value: "gpt-4o-mini", label: "⚡ 챗지피티 라이트", desc: "gpt-4o-mini — 빠르고 가벼운 ChatGPT 두뇌", cost: 1, memberOnly: false },
+      { value: "gpt-4o", label: "🧠 챗지피티 딥씽킹", desc: "gpt-4o — 더 똑똑한 ChatGPT 두뇌", cost: 2, memberOnly: true },
+    ],
+    gemini: [
+      { value: "gemini-3.8-flash", label: "⚡ 제미나이 라이트", desc: "gemini-3.8-flash — 빠른 제미나이 두뇌", cost: 1, memberOnly: false },
+      { value: "gemini-3.8-pro", label: "🧠 제미나이 딥씽킹", desc: "gemini-3.8-pro — 더 깊은 제미나이 두뇌", cost: 2, memberOnly: true },
+    ],
+  };
+  function isMemberOnlyModel(provider, model) {
+    return MODEL_CATALOG[provider]?.find((m) => m.value === model)?.memberOnly === true;
+  }
+
+  // 구글 로그인으로 받은 OAuth 액세스 토큰(제미나이 권한 스코프 포함). 있으면
+  // 게스트/회원이 제미나이 API 키를 직접 안 넣어도 그 구글 계정 권한으로 호출된다
+  // (계정에 Generative Language API가 허용돼 있을 때만 실제로 동작한다).
+  let googleGeminiAccessToken = null;
 
   // ---------------- 로컬에 남겨도 되는 값만 localStorage에 저장 ----------------
   // 크레딧/사용량과 대화 기록은 더 이상 localStorage에 안 둔다 — 크레딧은 항상
@@ -215,20 +245,29 @@
     updateModelLocks();
   }
 
-  // 게스트는 고급 모델(딥씽킹/스토리)을 아예 고를 수 없게 막는다 — 서버에서도
-  // 똑같이 막지만, 눌렀다가 403을 받고 나서야 알게 하는 대신 UI에서부터 막아준다.
-  function updateModelLocks() {
+  // provider가 바뀌면 그 provider의 진짜 모델 목록으로 다시 그린다. 게스트는
+  // 고급 모델(딥씽킹류)을 아예 고를 수 없게 UI에서부터 막는다 — 서버에서도
+  // 똑같이 막지만, 눌렀다가 403을 받고 나서야 알게 하는 것보단 미리 막는 게 낫다.
+  function rebuildModelOptions() {
+    const provider = providerSelect.value;
+    const models = MODEL_CATALOG[provider] || [];
     const isGuest = !currentUser;
-    Array.from(modelSelect.options).forEach((opt) => {
-      const locked = isGuest && MEMBER_ONLY_MODELS.has(opt.value);
+    const prevValue = modelSelect.value;
+    modelSelect.innerHTML = "";
+    for (const m of models) {
+      const opt = document.createElement("option");
+      opt.value = m.value;
+      const locked = isGuest && m.memberOnly;
       opt.disabled = locked;
-      const base = opt.textContent.replace(/\s*🔒$/, "");
-      opt.textContent = locked ? `${base} 🔒` : base;
-    });
-    if (isGuest && MEMBER_ONLY_MODELS.has(modelSelect.value)) {
-      modelSelect.value = "sonnet-5";
-      updateModelDesc();
+      opt.textContent = locked ? `${m.label} 🔒` : m.label;
+      modelSelect.appendChild(opt);
     }
+    const stillValid = models.some((m) => m.value === prevValue && !(isGuest && m.memberOnly));
+    modelSelect.value = stillValid ? prevValue : (models.find((m) => !(isGuest && m.memberOnly)) || models[0])?.value || "";
+    updateModelDesc();
+  }
+  function updateModelLocks() {
+    rebuildModelOptions();
   }
 
   // 가입 보너스는 서버(KV)가 계정당 1회만 지급을 허용한다 (claimSignupBonus).
@@ -404,6 +443,7 @@
       await refreshConversationList();
     } else {
       currentIdToken = null;
+      googleGeminiAccessToken = null;
       conversationsCache = [];
       syncCreditsFromServer();
     }
@@ -416,7 +456,8 @@
     if (currentUser) {
       await window.bbaldAuth.signOutUser();
     } else {
-      await window.bbaldAuth.signInGoogle();
+      const result = await window.bbaldAuth.signInGoogle();
+      if (result?.googleAccessToken) googleGeminiAccessToken = result.googleAccessToken;
     }
   });
 
@@ -603,6 +644,7 @@
     const pool = Math.random() < 0.6 ? LOADING_PHRASES_BBALD : LOADING_PHRASES_NORMAL;
     return pool[Math.floor(Math.random() * pool.length)];
   }
+  let loadingRotateTimer = null;
   function addLoadingBubble() {
     const wrap = document.createElement("div");
     wrap.className = "msg assistant loading";
@@ -618,8 +660,14 @@
     wrap.appendChild(bubble);
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
+    // 먹는 시간(10초~1분)이 길 수도 있으니, 기다리는 동안 멘트를 몇 초마다 바꿔준다.
+    loadingRotateTimer = setInterval(() => {
+      const b = document.querySelector("#loadingBubble .loading-bubble");
+      if (b) b.textContent = pickLoadingPhrase();
+    }, 4000);
   }
   function removeLoadingBubble() {
+    if (loadingRotateTimer) { clearInterval(loadingRotateTimer); loadingRotateTimer = null; }
     document.getElementById("loadingBubble")?.remove();
   }
 
@@ -724,21 +772,33 @@
     sendBtn.disabled = true;
     addLoadingBubble();
 
+    // 빨드가 영양 떨어짐/초콜릿 먹는 중이라는 설정이니, 10초~1분 사이 랜덤으로
+    // "먹는 시간"을 갖는다 — 실제 응답이 더 빨리 와도 최소 이 시간만큼은 로딩
+    // 말풍선이 떠 있다가 바뀐다 (네트워크 에러 자체는 기다리지 않고 바로 보여줌).
+    const eatingTimeMs = 10000 + Math.random() * 50000;
+    const eatingTimer = new Promise((resolve) => setTimeout(resolve, eatingTimeMs));
+    const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
+
     let res;
     try {
-      res = await fetch("api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: currentMessages.slice(-10),
-          provider,
-          model,
-          apiKey,
-          uid: currentUser?.uid || null,
-          image: attachment ? { dataUrl: attachment.dataUrl, mimeType: attachment.mimeType } : null,
+      const [fetchRes] = await Promise.all([
+        fetch("api/chat", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            history: currentMessages.slice(-10),
+            provider,
+            model,
+            apiKey,
+            uid: currentUser?.uid || null,
+            image: attachment ? { dataUrl: attachment.dataUrl, mimeType: attachment.mimeType } : null,
+            googleAccessToken: useGoogleGemini ? googleGeminiAccessToken : null,
+          }),
         }),
-      });
+        eatingTimer,
+      ]);
+      res = fetchRes;
     } catch (err) {
       removeLoadingBubble();
       const offline = typeof navigator !== "undefined" && navigator.onLine === false;
@@ -856,24 +916,22 @@
     el.addEventListener("click", closeSidebar);
   });
 
-  // ---------------- 모델 설명 ----------------
-  const MODEL_DESCRIPTIONS = {
-    "haiku-4.5": "⚡ 빨드 라이트 — 제일 빠르고 가벼운 두뇌. 짧고 간단한 대화에 딱이다능!",
-    "sonnet-5": "🦕 빨드 기본 — 속도와 똑똑함의 균형. 평소엔 이걸로 쓰면 딱 좋다능!",
-    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 사용량을 더 쓴다능. (로그인 필요)",
-    "fable-5.1": "📖 빨드 스토리 — 이야기하듯 표현력이 풍부한 두뇌. 창작/이야기에 어울린다능! (로그인 필요)",
-  };
+  // ---------------- 모델 설명 (상세설정: 실제 모델명 + 비용 배율을 같이 보여준다) ----------------
   function updateModelDesc() {
-    modelDescEl.textContent = MODEL_DESCRIPTIONS[modelSelect.value] || "";
+    const provider = providerSelect.value;
+    const m = (MODEL_CATALOG[provider] || []).find((x) => x.value === modelSelect.value);
+    modelDescEl.textContent = m ? `${m.desc} · 사용량 비용 ×${m.cost}${m.memberOnly ? " · 로그인 필요" : ""}` : "";
   }
+  providerSelect.addEventListener("change", rebuildModelOptions);
   modelSelect.addEventListener("change", () => {
-    if (!currentUser && MEMBER_ONLY_MODELS.has(modelSelect.value)) {
-      modelSelect.value = "sonnet-5";
+    if (isMemberOnlyModel(providerSelect.value, modelSelect.value) && !currentUser) {
+      rebuildModelOptions();
       addMessage("assistant", "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒", { extraClass: "snack" });
+      return;
     }
     updateModelDesc();
   });
-  updateModelDesc();
+  rebuildModelOptions();
 
   function bindKeyInput(id, providerKey) {
     const el = document.getElementById(id);

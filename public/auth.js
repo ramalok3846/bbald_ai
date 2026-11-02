@@ -49,12 +49,21 @@ async function init() {
   const app = initializeApp(window.BBALD_FIREBASE_CONFIG);
   const auth = getAuth(app);
   const provider = new GoogleAuthProvider();
+  // 구글 로그인시 받는 OAuth 액세스 토큰에 제미나이(Generative Language API) 권한
+  // 스코프를 같이 요청해둔다 — 계정에 그 API가 허용돼 있으면, 빨드 AI가 사용자가
+  // 직접 API 키를 입력 안 해도 그 구글 계정 자체의 권한/크레딧으로 호출할 수 있다
+  // ("가능하다면"이라 최선 시도: 계정에 해당 API/프로젝트가 없으면 그냥 안 쓰인다).
+  provider.addScope("https://www.googleapis.com/auth/generative-language");
 
   onAuthStateChanged(auth, (user) => dispatchAuthChanged(user));
 
   window.bbaldAuth = {
     enabled: true,
-    signInGoogle: () => signInWithPopup(auth, provider),
+    signInGoogle: async () => {
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      return { user: result.user, googleAccessToken: credential?.accessToken || null };
+    },
     signUpEmail: (email, password) => createUserWithEmailAndPassword(auth, email, password),
     signInEmail: (email, password) => signInWithEmailAndPassword(auth, email, password),
     signOutUser: () => signOut(auth),

@@ -23,8 +23,9 @@ import { requireAdmin } from "./admin.js";
 import { verifyIdToken } from "./firebase-verify.js";
 import { listConversations, getConversation, saveConversation, deleteConversation } from "./conversations.js";
 
-// provider 기본 비용 + Claude 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
+// provider 기본 비용 + 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
 // 줄어들게 해달라"는 요청 반영 — 더 똑똑한(비싼) 모델일수록 더 많이 깎는다.
+// 모델 상세 정보(실제 API 모델 id, 비용 배율, 로그인 필요 여부)는 provider별로 묶어둔다.
 const BASE_COST = {
   builtin: 2,
   cloudflare: 2,
@@ -32,23 +33,31 @@ const BASE_COST = {
   openai: 5,
   gemini: 5,
 };
-const MODEL_COST_MULTIPLIER = {
-  "haiku-4.5": 1, // 빨드 라이트
-  "sonnet-5": 1.5, // 빨드 기본
-  "opus-5.5": 3, // 빨드 딥씽킹
-  "fable-5.1": 2, // 빨드 스토리
+const MODEL_INFO = {
+  anthropic: {
+    "haiku-4.5": { mult: 1, memberOnly: false }, // 빨드 라이트
+    "sonnet-5": { mult: 1.5, memberOnly: false }, // 빨드 기본
+    "opus-5.5": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
+    "fable-5.1": { mult: 2, memberOnly: true }, // 빨드 스토리
+  },
+  openai: {
+    "gpt-4o-mini": { mult: 1, memberOnly: false },
+    "gpt-4o": { mult: 2, memberOnly: true },
+  },
+  gemini: {
+    "gemini-3.8-flash": { mult: 1, memberOnly: false },
+    "gemini-3.8-pro": { mult: 2, memberOnly: true },
+  },
 };
 function computeCost(provider, model) {
   const base = BASE_COST[provider] ?? 4;
-  if (provider === "anthropic") {
-    const mult = MODEL_COST_MULTIPLIER[model] ?? 1.5;
-    return Math.max(1, Math.round(base * mult));
-  }
-  return base;
+  // builtin/cloudflare는 모델 선택이 없으므로(단일 모델) 배율은 항상 1.
+  const mult = MODEL_INFO[provider]?.[model]?.mult ?? 1;
+  return Math.max(1, Math.round(base * mult));
 }
-
-// 로그인 없이는 못 쓰는 모델(더 똑똑한/비싼 두뇌). 게스트가 고르면 로그인을 요구한다.
-const MEMBER_ONLY_MODELS = new Set(["opus-5.5", "fable-5.1"]);
+function isMemberOnlyModel(provider, model) {
+  return MODEL_INFO[provider]?.[model]?.memberOnly === true;
+}
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -85,6 +94,9 @@ async function handleChatInner(request, env) {
     apiKey = "",
     uid = null, // Firebase 로그인 사용자면 uid, 아니면 null(게스트는 IP로 식별)
     image = null, // { dataUrl, mimeType } | null
+    // 구글 로그인 시 받은 OAuth 액세스 토큰(Generative Language API 스코프 포함).
+    // 있으면 제미나이를 API 키 입력 없이 그 구글 계정 자체의 권한/크레딧으로 호출한다.
+    googleAccessToken = null,
   } = body;
 
   if ((typeof message !== "string" || !message.trim()) && !image) {
@@ -118,7 +130,7 @@ async function handleChatInner(request, env) {
   if (isGuest && image) {
     return json({ error: "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒" }, { status: 403 });
   }
-  if (isGuest && MEMBER_ONLY_MODELS.has(model)) {
+  if (isGuest && isMemberOnlyModel(provider, model)) {
     return json({ error: "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒" }, { status: 403 });
   }
 
@@ -195,10 +207,12 @@ async function handleChatInner(request, env) {
       reply = await callAnthropic({ apiKey, model, systemPrompt, history, message, image });
     } else if (provider === "openai") {
       if (!apiKey) return json({ error: "챗지피티 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callOpenAI({ apiKey, systemPrompt, history, message, image });
+      reply = await callOpenAI({ apiKey, model, systemPrompt, history, message, image });
     } else if (provider === "gemini") {
-      if (!apiKey) return json({ error: "제미나이 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callGemini({ apiKey, systemPrompt, history, message, image });
+      if (!apiKey && !googleAccessToken) {
+        return json({ error: "제미나이 API 키를 설정에 넣거나, 구글 로그인을 해달라능!" }, { status: 400 });
+      }
+      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model, systemPrompt, history, message, image });
     } else {
       return json({ error: "알 수 없는 provider다능" }, { status: 400 });
     }

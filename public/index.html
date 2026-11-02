@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=9" />
+<link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 <div class="app">
@@ -80,10 +80,7 @@
           <option value="gemini">Gemini</option>
         </select>
         <select id="modelSelect" class="select">
-          <option value="haiku-4.5">⚡ 빨드 라이트</option>
-          <option value="sonnet-5" selected>🦕 빨드 기본</option>
-          <option value="opus-5.5">🧠 빨드 딥씽킹</option>
-          <option value="fable-5.1">📖 빨드 스토리</option>
+          <option value="default">🦕 빨드 두뇌</option>
         </select>
         <div class="theme-sw" id="themeSw" role="group" aria-label="화면 테마">
           <button type="button" data-mode="system" aria-pressed="true" aria-label="테마: 시스템" title="기기 설정 따라가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3zM8 20h8M12 16v4"></path></svg></button>
@@ -147,9 +144,9 @@
       </label>
       <label class="field">
         <span>Gemini API 키</span>
-        <input type="password" id="key-gemini" placeholder="AIza..." />
+        <input type="password" id="key-gemini" placeholder="AIza... (구글 로그인 계정에 권한 있으면 비워둬도 됨)" />
       </label>
-      <p class="hint">API 키는 이 브라우저에만 저장되고, 서버에는 저장되지 않는다능. Cloudflare Workers AI는 별도 키 없이 바로 사용 가능!</p>
+      <p class="hint">API 키는 이 브라우저에만 저장되고, 서버에는 저장되지 않는다능. Cloudflare Workers AI는 별도 키 없이 바로 사용 가능! 구글로 로그인한 상태면, 그 계정에 Generative Language API 권한이 있을 때 Gemini 키를 안 넣어도 바로 쓸 수 있다능.</p>
 
       <div class="field">
         <span>빨드 파워 사용량</span>
@@ -212,11 +209,11 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=9"></script>
-<script type="module" src="auth.js?v=9"></script>
+<script src="firebase-config.js?v=10"></script>
+<script type="module" src="auth.js?v=10"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
