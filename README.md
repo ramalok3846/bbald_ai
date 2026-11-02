@@ -96,3 +96,30 @@ npm run deploy
 Cloudflare 대시보드 → Workers & Pages → `bbald-ai` → Settings → Domains & Routes 에서
 원하는 서브도메인(예: `bbald.ramalok.kr`)을 연결하거나, `wrangler.toml`의 주석 처리된
 `[[routes]]` 블록을 활성화하면 됩니다.
+
+## 디자인 — ramalok.kr 메인 테마
+
+`public/style.css`의 색 토큰(`--primary`, `--text`, `--bg-deep` 등)은 PaLhomepage의
+`css/home.css`에서 그대로 가져왔습니다. 라이트/다크 모두 지원하고(`prefers-color-scheme`
++ `[data-theme]` 둘 다 반영), 폰트도 메인 사이트와 동일한 Pretendard CDN을 씁니다.
+빨드 AI만의 파비콘(`public/favicon.png`)은 `/bbald_ai` 경로 안에서만 쓰이고,
+PaLhomepage 저장소의 메인 파비콘(`favicon.png`)은 건드리지 않습니다.
+
+## 관리자 페이지 (`/admin.html`)
+
+`ramalok.kr/bbald_ai/admin.html`에서 상세 관리가 가능합니다. 별도 비밀번호 시스템이
+아니라 **ramalok.kr 메인 관리자 시스템과 완전히 동일한 권한 체계**를 씁니다 — Firebase
+Realtime Database의 `admins/{uid} === true`인 계정만 통과하므로, 메인 사이트
+(admin.ramalok.kr)에서 이미 관리자로 등록된 계정이면 별도 등록 없이 바로 쓸 수 있습니다
+(`src/admin.js`가 PaLhomepage `worker/index.js`의 `verifyIdToken`과 동일한 방식으로
+ID 토큰을 검증합니다).
+
+관리자 페이지에서 할 수 있는 것:
+- 신원(`uid:...` 또는 `ip:...`)별 크레딧 조회/가감/직접 설정
+- 최근 크레딧 보유자 목록 (KV `list()`로 페이지네이션)
+- provider별 하루 사용량 제한 수정 (코드 재배포 없이, `src/config.js`가 KV에 저장)
+- 신규 가입 기본 지급 크레딧 수정
+- 점검 모드 on/off + 점검 중 안내 메시지 (켜면 모든 사용자의 `/api/chat`이 그 메시지만 반환)
+
+서버 쪽 관리자 API는 전부 `/api/admin/*`이고, `src/worker.js`의 `handleAdmin()`이 매
+요청마다 토큰을 재검증합니다 (세션을 서버에 저장하지 않음).

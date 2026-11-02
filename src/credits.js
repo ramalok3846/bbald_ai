@@ -30,15 +30,15 @@ export function resolveIdentity(request, uid) {
   return `ip:${ip}`;
 }
 
-export async function getBalance(env, identity) {
-  if (!env.RATE_LIMIT_KV) return STARTING_CREDITS; // KV 미설정 시 예전처럼 그냥 동작(제한 없음)
+export async function getBalance(env, identity, startingCredits = STARTING_CREDITS) {
+  if (!env.RATE_LIMIT_KV) return startingCredits; // KV 미설정 시 예전처럼 그냥 동작(제한 없음)
   const raw = await env.RATE_LIMIT_KV.get(creditsKey(identity));
   if (raw === null) {
-    await env.RATE_LIMIT_KV.put(creditsKey(identity), String(STARTING_CREDITS));
-    return STARTING_CREDITS;
+    await env.RATE_LIMIT_KV.put(creditsKey(identity), String(startingCredits));
+    return startingCredits;
   }
   const n = Number(raw);
-  return Number.isFinite(n) ? n : STARTING_CREDITS;
+  return Number.isFinite(n) ? n : startingCredits;
 }
 
 async function setBalance(env, identity, value) {
@@ -48,8 +48,8 @@ async function setBalance(env, identity, value) {
   return clamped;
 }
 
-export async function spendCredits(env, identity, cost) {
-  const current = await getBalance(env, identity);
+export async function spendCredits(env, identity, cost, startingCredits = STARTING_CREDITS) {
+  const current = await getBalance(env, identity, startingCredits);
   if (current < cost) return { ok: false, balance: current };
   const next = await setBalance(env, identity, current - cost);
   return { ok: true, balance: next };
@@ -79,4 +79,32 @@ export async function claimStickerBonus(env, identity, rand = Math.random) {
   const current = await getBalance(env, identity);
   const next = await setBalance(env, identity, current + amount);
   return { granted: true, amount, balance: next };
+}
+
+// ---------------- 관리자 전용 ----------------
+
+// 관리자가 특정 신원(identity)의 잔액을 직접 가감한다. delta는 음수도 가능.
+export async function adminAdjustBalance(env, identity, delta) {
+  const current = await getBalance(env, identity);
+  const next = await setBalance(env, identity, current + delta);
+  return { balance: next };
+}
+
+export async function adminSetBalance(env, identity, value) {
+  const next = await setBalance(env, identity, value);
+  return { balance: next };
+}
+
+// credits:* 키를 KV list()로 훑어서 신원 목록 + 잔액을 돌려준다 (페이지네이션 지원).
+export async function listCreditIdentities(env, cursor) {
+  if (!env.RATE_LIMIT_KV) return { items: [], cursor: null, done: true };
+  const page = await env.RATE_LIMIT_KV.list({ prefix: "credits:", cursor: cursor || undefined, limit: 50 });
+  const items = await Promise.all(
+    page.keys.map(async (k) => {
+      const identity = k.name.slice("credits:".length);
+      const raw = await env.RATE_LIMIT_KV.get(k.name);
+      return { identity, balance: Number(raw) || 0 };
+    })
+  );
+  return { items, cursor: page.cursor || null, done: page.list_complete };
 }

@@ -1,27 +1,67 @@
+/* ramalok.kr(메인 PAL 홈페이지, css/home.css) 테마 토큰을 그대로 가져와 맞췄다.
+   빨드 AI만의 색이 아니라 ramalok.kr 전체 브랜드 색(보라-핑크)을 공유한다. */
 :root {
-  --pink: #ffb3ba;
-  --purple: #ba9ce8;
-  --pink-deep: #ff8fa3;
-  --purple-deep: #9b7bd1;
-  --bg-deep: #f7eefb;
+  color-scheme: light dark;
+  --purple: #a06bff;
+  --pink: #e58bd9;
+  --purple-deep: #5b3fd9;
+  --pink-deep: #e58bd9;
+  --bg-deep: #f7f5ff;
   --surface: #ffffff;
-  --text: #3a2b4a;
-  --text-muted: #7a6a8a;
-  --text-faint: #a698b5;
-  --border: #ecdcf5;
+  --text: #241e3b;
+  --text-muted: #6b6389;
+  --text-faint: #9a92bc;
+  --border: rgba(124, 92, 252, 0.16);
   --radius-lg: 20px;
   --radius-md: 14px;
-  --shadow-card: 0 2px 10px rgba(155, 96, 189, 0.08);
-  --shadow-soft: 0 10px 30px rgba(155, 96, 189, 0.16);
+  --shadow-card: 0 2px 10px rgba(91, 63, 217, 0.08);
+  --shadow-soft: 0 10px 30px rgba(91, 63, 217, 0.16);
+  --grad: linear-gradient(135deg, #7c5cfc 0%, #a06bff 48%, #e58bd9 100%);
+  --surface-soft: rgba(255, 255, 255, 0.72);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --purple: #9b80ff;
+    --pink: #c98bd6;
+    --purple-deep: #b8a4ff;
+    --pink-deep: #c98bd6;
+    --bg-deep: #0f0c1c;
+    --surface: #1a1530;
+    --text: #f1eeff;
+    --text-muted: #b3aad6;
+    --text-faint: #8077aa;
+    --border: rgba(169, 140, 255, 0.2);
+    --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.3);
+    --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
+    --surface-soft: rgba(26, 21, 48, 0.72);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --purple: #9b80ff;
+  --pink: #c98bd6;
+  --purple-deep: #b8a4ff;
+  --pink-deep: #c98bd6;
+  --bg-deep: #0f0c1c;
+  --surface: #1a1530;
+  --text: #f1eeff;
+  --text-muted: #b3aad6;
+  --text-faint: #8077aa;
+  --border: rgba(169, 140, 255, 0.2);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.3);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --surface-soft: rgba(26, 21, 48, 0.72);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
   color: var(--text);
-  background: linear-gradient(160deg, var(--pink) 0%, var(--purple) 100%);
+  background: var(--bg-deep);
 }
 
 .app {
@@ -187,7 +227,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, var(--bg-deep) 0%, #fff 60%);
+  background: linear-gradient(180deg, var(--bg-deep) 0%, var(--surface) 60%);
 }
 
 .topbar {
@@ -196,7 +236,7 @@ body {
   justify-content: space-between;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255,255,255,0.7);
+  background: var(--surface-soft);
   backdrop-filter: blur(6px);
 }
 .mood-badge {
@@ -214,7 +254,7 @@ body {
   font-size: 0.75rem;
   color: var(--text-faint);
   text-align: right;
-  background: rgba(255,255,255,0.5);
+  background: var(--surface-soft);
   border-bottom: 1px solid var(--border);
 }
 .select {
@@ -345,7 +385,7 @@ body {
   gap: 10px;
   padding: 16px 24px 20px;
   border-top: 1px solid var(--border);
-  background: rgba(255,255,255,0.85);
+  background: var(--surface-soft);
 }
 .composer-row {
   display: flex;

@@ -32,8 +32,11 @@ function clientIp(request) {
 }
 
 // 반환: { allowed, remaining, limit } — allowed=false면 오늘치를 다 썼다는 뜻.
-export async function checkAndConsumeDailyLimit(env, request, provider) {
-  const limit = DAILY_LIMITS[provider] ?? 300;
+// dailyLimitsOverride: 관리자가 설정 화면에서 바꾼 값(src/config.js). 없으면
+// 위 DAILY_LIMITS 기본값을 쓴다.
+export async function checkAndConsumeDailyLimit(env, request, provider, dailyLimitsOverride) {
+  const limits = dailyLimitsOverride || DAILY_LIMITS;
+  const limit = limits[provider] ?? 300;
   if (!env.RATE_LIMIT_KV) {
     // KV 미설정: 제한 없이 통과 (README/wrangler.toml 안내 참고)
     return { allowed: true, remaining: null, limit, enabled: false };

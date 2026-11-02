@@ -1,0 +1,230 @@
+(() => {
+  const gate = document.getElementById("gate");
+  const app = document.getElementById("app");
+  const gateMsg = document.getElementById("gateMsg");
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const whoami = document.getElementById("whoami");
+
+  const lookupIdentity = document.getElementById("lookupIdentity");
+  const lookupBtn = document.getElementById("lookupBtn");
+  const adjustRow = document.getElementById("adjustRow");
+  const lookupResult = document.getElementById("lookupResult");
+  const deltaInput = document.getElementById("deltaInput");
+  const adjustBtn = document.getElementById("adjustBtn");
+  const setToInput = document.getElementById("setToInput");
+  const setToBtn = document.getElementById("setToBtn");
+
+  const listBody = document.getElementById("listBody");
+  const refreshListBtn = document.getElementById("refreshListBtn");
+
+  const limitsRow = document.getElementById("limitsRow");
+  const saveLimitsBtn = document.getElementById("saveLimitsBtn");
+  const startingCreditsInput = document.getElementById("startingCreditsInput");
+  const saveStartingBtn = document.getElementById("saveStartingBtn");
+  const maintenanceToggle = document.getElementById("maintenanceToggle");
+  const maintenanceMessage = document.getElementById("maintenanceMessage");
+  const saveMaintenanceBtn = document.getElementById("saveMaintenanceBtn");
+
+  const toastEl = document.getElementById("toast");
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  let idToken = null;
+  let currentIdentity = null;
+
+  async function api(path, opts = {}) {
+    const headers = { ...(opts.headers || {}) };
+    if (idToken) headers["x-admin-token"] = idToken;
+    const res = await fetch(`api/admin/${path}`, { ...opts, headers });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `요청 실패 (${res.status})`);
+    return data;
+  }
+
+  function showGate(message) {
+    gate.hidden = false;
+    app.hidden = true;
+    gateMsg.textContent = message || "";
+  }
+  function showApp() {
+    gate.hidden = true;
+    app.hidden = false;
+  }
+
+  async function tryEnterAdmin(user) {
+    if (!user) {
+      showGate("");
+      return;
+    }
+    try {
+      idToken = await user.getIdToken();
+      const me = await api("me");
+      whoami.textContent = me.email || me.uid;
+      showApp();
+      loadConfig();
+      loadList();
+    } catch (err) {
+      idToken = null;
+      showGate(`관리자 권한이 없는 계정이다능. (${err.message})`);
+    }
+  }
+
+  window.addEventListener("bbald-auth-changed", (e) => {
+    tryEnterAdmin(e.detail.user);
+  });
+
+  loginBtn.addEventListener("click", () => window.bbaldAuth?.signInGoogle());
+  logoutBtn.addEventListener("click", () => window.bbaldAuth?.signOutUser());
+
+  // ---------------- 크레딧 조회/조정 ----------------
+  lookupBtn.addEventListener("click", async () => {
+    const identity = lookupIdentity.value.trim();
+    if (!identity) return;
+    try {
+      const data = await api(`lookup?identity=${encodeURIComponent(identity)}`);
+      currentIdentity = data.identity;
+      lookupResult.textContent = `${data.identity} : ${data.credits} 크레딧`;
+      adjustRow.hidden = false;
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  adjustBtn.addEventListener("click", async () => {
+    const delta = Number(deltaInput.value);
+    if (!currentIdentity || !Number.isFinite(delta)) return;
+    try {
+      const data = await api("adjust", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identity: currentIdentity, delta }),
+      });
+      lookupResult.textContent = `${currentIdentity} : ${data.balance} 크레딧`;
+      toast("적용했다능!");
+      loadList();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  setToBtn.addEventListener("click", async () => {
+    const setTo = Number(setToInput.value);
+    if (!currentIdentity || !Number.isFinite(setTo)) return;
+    try {
+      const data = await api("adjust", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identity: currentIdentity, setTo }),
+      });
+      lookupResult.textContent = `${currentIdentity} : ${data.balance} 크레딧`;
+      toast("적용했다능!");
+      loadList();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  // ---------------- 목록 ----------------
+  async function loadList() {
+    try {
+      const data = await api("list");
+      listBody.innerHTML = "";
+      for (const item of data.items) {
+        const tr = document.createElement("tr");
+        const edit = document.createElement("button");
+        edit.className = "btn secondary";
+        edit.textContent = "조회칸에 넣기";
+        edit.style.padding = "4px 10px";
+        edit.style.fontSize = "0.75rem";
+        edit.addEventListener("click", () => {
+          lookupIdentity.value = item.identity;
+          lookupBtn.click();
+        });
+        tr.innerHTML = `<td>${item.identity}</td><td>${item.balance}</td>`;
+        const td = document.createElement("td");
+        td.appendChild(edit);
+        tr.appendChild(td);
+        listBody.appendChild(tr);
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+  refreshListBtn.addEventListener("click", loadList);
+
+  // ---------------- 설정 (하루 제한 / 기본 크레딧 / 점검 모드) ----------------
+  async function loadConfig() {
+    try {
+      const cfg = await api("config");
+      limitsRow.innerHTML = "";
+      for (const [provider, limit] of Object.entries(cfg.dailyLimits)) {
+        const wrap = document.createElement("label");
+        wrap.style.display = "flex";
+        wrap.style.flexDirection = "column";
+        wrap.style.gap = "4px";
+        wrap.innerHTML = `<span style="font-size:0.78rem;color:var(--text-muted);">${provider}</span>`;
+        const input = document.createElement("input");
+        input.type = "number";
+        input.value = limit;
+        input.dataset.provider = provider;
+        input.style.maxWidth = "110px";
+        wrap.appendChild(input);
+        limitsRow.appendChild(wrap);
+      }
+      startingCreditsInput.value = cfg.startingCredits;
+      maintenanceToggle.checked = !!cfg.maintenance.enabled;
+      maintenanceMessage.value = cfg.maintenance.message;
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  saveLimitsBtn.addEventListener("click", async () => {
+    const dailyLimits = {};
+    limitsRow.querySelectorAll("input").forEach((el) => {
+      dailyLimits[el.dataset.provider] = Number(el.value) || 0;
+    });
+    try {
+      await api("config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dailyLimits }),
+      });
+      toast("하루 사용량 제한 저장했다능!");
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  saveStartingBtn.addEventListener("click", async () => {
+    try {
+      await api("config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ startingCredits: Number(startingCreditsInput.value) || 100 }),
+      });
+      toast("기본 크레딧 저장했다능!");
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  saveMaintenanceBtn.addEventListener("click", async () => {
+    try {
+      await api("config", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          maintenance: { enabled: maintenanceToggle.checked, message: maintenanceMessage.value },
+        }),
+      });
+      toast("점검 모드 설정 저장했다능!");
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+})();

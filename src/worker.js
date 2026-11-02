@@ -8,7 +8,18 @@ import {
 } from "./bbald.js";
 import { callAnthropic, callOpenAI, callGemini, callCloudflareAI } from "./providers.js";
 import { checkAndConsumeDailyLimit } from "./rate-limit.js";
-import { resolveIdentity, getBalance, spendCredits, claimSignupBonus, claimStickerBonus } from "./credits.js";
+import {
+  resolveIdentity,
+  getBalance,
+  spendCredits,
+  claimSignupBonus,
+  claimStickerBonus,
+  adminAdjustBalance,
+  adminSetBalance,
+  listCreditIdentities,
+} from "./credits.js";
+import { getConfig, setConfig } from "./config.js";
+import { requireAdmin } from "./admin.js";
 
 const CREDIT_COST = {
   builtin: 1,
@@ -62,11 +73,19 @@ async function handleChatInner(request, env) {
   const { isSmart, level, sunsetLabel } = getSmartInfo();
   const cost = CREDIT_COST[provider] ?? 3;
   const identity = resolveIdentity(request, uid);
+  const config = await getConfig(env);
+
+  if (config.maintenance?.enabled) {
+    return json(
+      { reply: config.maintenance.message, credits: await getBalance(env, identity, config.startingCredits), isSmart, snack: false, maintenance: true },
+      { status: 503 }
+    );
+  }
 
   // 크레딧은 서버(KV)가 유일한 출처다 — 클라이언트가 뭐라고 보내든 무시하고
   // 서버에 저장된 실제 잔액만 본다. (예전엔 클라이언트가 보낸 숫자를 그대로
   // 믿고 차감만 해서, 설정 화면에서 숫자를 직접 입력하면 무한 충전이 가능했음)
-  const currentBalance = await getBalance(env, identity);
+  const currentBalance = await getBalance(env, identity, config.startingCredits);
 
   if (currentBalance < cost) {
     return json({
@@ -95,7 +114,7 @@ async function handleChatInner(request, env) {
   // "제한 없음"으로 취급하고 그냥 통과시킨다.
   let limitCheck;
   try {
-    limitCheck = await checkAndConsumeDailyLimit(env, request, provider);
+    limitCheck = await checkAndConsumeDailyLimit(env, request, provider, config.dailyLimits);
   } catch (err) {
     limitCheck = { allowed: true, remaining: null, limit: null, enabled: false };
   }
@@ -141,7 +160,7 @@ async function handleChatInner(request, env) {
   }
 
   reply = applyPersonaFlourish(reply, level);
-  const spend = await spendCredits(env, identity, cost);
+  const spend = await spendCredits(env, identity, cost, config.startingCredits);
   const snack = maybeSnackLine(cost);
 
   return json({
@@ -154,6 +173,69 @@ async function handleChatInner(request, env) {
     provider,
     dailyRemaining: limitCheck.remaining,
   });
+}
+
+// 관리자 API. 전부 idToken(Firebase ID 토큰, admins/{uid}===true 계정만 통과)으로
+// 인증한다 — ramalok.kr 메인 관리자 시스템과 동일한 규칙이라 거기서 이미 등록된
+// 관리자 계정이면 바로 쓸 수 있다.
+async function handleAdmin(request, env, url) {
+  try {
+    const idToken =
+      request.headers.get("x-admin-token") ||
+      (request.method === "GET" ? url.searchParams.get("idToken") : null);
+
+    const admin = await requireAdmin(idToken);
+    if (!admin) return json({ error: "관리자 권한이 없다능!" }, { status: 403 });
+
+    const path = url.pathname.slice("/api/admin/".length);
+
+    if (path === "me" && request.method === "GET") {
+      return json({ admin: true, email: admin.email, uid: admin.uid });
+    }
+
+    if (path === "config" && request.method === "GET") {
+      return json(await getConfig(env));
+    }
+
+    if (path === "config" && request.method === "POST") {
+      const patch = await request.json();
+      const next = await setConfig(env, patch);
+      return json(next);
+    }
+
+    if (path === "lookup" && request.method === "GET") {
+      const identity = url.searchParams.get("identity");
+      if (!identity) return json({ error: "identity 파라미터가 필요하다능" }, { status: 400 });
+      const config = await getConfig(env);
+      const credits = await getBalance(env, identity, config.startingCredits);
+      return json({ identity, credits });
+    }
+
+    if (path === "list" && request.method === "GET") {
+      const cursor = url.searchParams.get("cursor") || undefined;
+      const result = await listCreditIdentities(env, cursor);
+      return json(result);
+    }
+
+    if (path === "adjust" && request.method === "POST") {
+      const body = await request.json();
+      const { identity, delta, setTo } = body;
+      if (!identity) return json({ error: "identity가 필요하다능" }, { status: 400 });
+      if (typeof setTo === "number") {
+        const result = await adminSetBalance(env, identity, setTo);
+        return json(result);
+      }
+      if (typeof delta === "number") {
+        const result = await adminAdjustBalance(env, identity, delta);
+        return json(result);
+      }
+      return json({ error: "delta 또는 setTo 숫자가 필요하다능" }, { status: 400 });
+    }
+
+    return json({ error: "알 수 없는 관리자 API다능" }, { status: 404 });
+  } catch (err) {
+    return json({ error: `관리자 API 오류다능... (${err?.message || err})` }, { status: 500 });
+  }
 }
 
 export default {
@@ -195,6 +277,10 @@ export default {
       } catch (err) {
         return json({ error: `보너스 지급 중 문제가 생겼다능... (${err.message})` }, { status: 500 });
       }
+    }
+
+    if (url.pathname.startsWith("/api/admin/")) {
+      return handleAdmin(request, env, url);
     }
 
     if (env.ASSETS) {
