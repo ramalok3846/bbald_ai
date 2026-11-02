@@ -23,18 +23,10 @@ import { requireAdmin } from "./admin.js";
 import { verifyIdToken } from "./firebase-verify.js";
 import { listConversations, getConversation, saveConversation, deleteConversation } from "./conversations.js";
 import {
-  CREDIT_PACKS,
-  PRO_PLAN_INFO,
-  getPlan,
-  getCapBonus,
-  computeEffectiveCap,
+  getUnified,
+  spendUnified,
+  redeemUnifiedCoupon,
   computeEffectiveDailyLimits,
-  purchaseCreditPack,
-  subscribePro,
-  redeemCoupon,
-  createCoupon,
-  deleteCoupon,
-  listCoupons,
 } from "./billing.js";
 
 // provider 기본 비용 + 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
@@ -84,20 +76,47 @@ function isMemberOnlyModel(provider, model) {
   return MODEL_INFO[provider]?.[model]?.memberOnly === true;
 }
 
-// 신원(게스트/회원)에 맞는 cap(크레딧 최대치)·하루 제한을 계산한다. 회원이면
-// 요금제(PRO)·구매/쿠폰으로 늘어난 cap_bonus까지 반영한다 — 게스트는 IP 기반
-// 신원이라 요금제에 가입할 수 없으므로 기본값만 쓴다.
-async function resolveEconomy(env, config, identity, isGuest, idToken) {
-  const baseCap = isGuest ? config.startingCreditsGuest : config.startingCredits;
-  const baseDailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
-  if (isGuest) return { cap: baseCap, dailyLimits: baseDailyLimits, plan: { tier: "free" }, capBonus: 0 };
-  const [plan, capBonus] = await Promise.all([getPlan(env, identity, idToken), getCapBonus(env, identity)]);
+// 요청 한 건의 계정 상태. 회원(검증된 Firebase ID 토큰)이면 로컬(KV) 기본 크레딧에
+// PAL 통합 크레딧(billing/{uid})을 합쳐서 한 잔액으로 보여주고, 요금제가 무료가
+// 아니면 하루 제한도 늘려준다. 토큰이 없거나 uid와 안 맞으면 게스트로 취급한다.
+async function getAccount(request, env, config, uid, idToken) {
+  let verifiedUid = null;
+  if (uid && idToken) {
+    const u = await verifyIdToken(idToken);
+    if (u && u.uid === uid) verifiedUid = u.uid;
+  }
+  const identity = resolveIdentity(request, verifiedUid);
+  if (!verifiedUid) {
+    const cap = config.startingCreditsGuest;
+    const local = await getBalance(env, identity, cap);
+    return {
+      isGuest: true, identity, idToken: null, localCap: cap, local, unified: null,
+      cap, balance: local, dailyLimits: config.dailyLimitsGuest, plan: { id: "free", name: "무료" },
+    };
+  }
+  const localCap = config.startingCredits;
+  const [local, unified] = await Promise.all([getBalance(env, identity, localCap), getUnified(idToken)]);
   return {
-    cap: computeEffectiveCap(baseCap, plan, capBonus),
-    dailyLimits: computeEffectiveDailyLimits(baseDailyLimits, plan),
-    plan,
-    capBonus,
+    isGuest: false, identity, idToken, localCap, local, unified,
+    // cap은 "이만큼까지 찰 수 있다"는 게이지 기준: 로컬 기본 + (요금제 지급량 또는 실제 통합 크레딧 중 큰 쪽).
+    // 잔액(local + 통합)이 항상 cap 이하라서 "135/100" 같은 표시가 안 나온다.
+    cap: localCap + Math.max(unified.plan.credits, unified.credits),
+    balance: local + unified.credits,
+    dailyLimits: computeEffectiveDailyLimits(config.dailyLimits, unified),
+    plan: unified.plan,
   };
+}
+
+// 비용은 로컬 크레딧부터 쓰고, 모자란 만큼을 PAL 통합 크레딧에서 뺀다.
+async function spendAccount(env, acct, cost) {
+  const fromLocal = Math.min(acct.local, cost);
+  const rest = cost - fromLocal;
+  if (rest > 0) {
+    const r = await spendUnified(acct.idToken, rest);
+    if (!r.ok) return { ok: false, balance: acct.balance };
+  }
+  if (fromLocal > 0) await spendCredits(env, acct.identity, fromLocal, acct.localCap);
+  return { ok: true, balance: acct.balance - cost };
 }
 
 function json(data, init = {}) {
@@ -138,8 +157,8 @@ async function handleChatInner(request, env) {
     // 구글 로그인 시 받은 OAuth 액세스 토큰(Generative Language API 스코프 포함).
     // 있으면 제미나이를 API 키 입력 없이 그 구글 계정 자체의 권한/크레딧으로 호출한다.
     googleAccessToken = null,
-    // 로그인한 사용자의 Firebase ID 토큰(선택). 있으면 PAL Design(pal-canva)의
-    // PRO 구독도 같이 확인해서 "통합회원 요금제"로 인정해줄 수 있다.
+    // 로그인한 사용자의 Firebase ID 토큰. 검증돼야 회원으로 인정하고 PAL 통합
+    // 요금제·크레딧을 쓴다 (없거나 uid와 안 맞으면 게스트).
     idToken = null,
   } = body;
   const hasImages = Array.isArray(images) && images.length > 0;
@@ -148,12 +167,11 @@ async function handleChatInner(request, env) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
-  const isGuest = !uid;
-  const identity = resolveIdentity(request, uid);
   const config = await getConfig(env);
-  const economy = await resolveEconomy(env, config, identity, isGuest, idToken);
-  const effectiveCap = economy.cap;
-  const effectiveDailyLimits = economy.dailyLimits;
+  const acct = await getAccount(request, env, config, uid, idToken);
+  const { isGuest, identity } = acct;
+  const effectiveCap = acct.cap;
+  const effectiveDailyLimits = acct.dailyLimits;
 
   const { isSmart, level, sunsetLabel } = getSmartInfo();
   const cost = computeCost(provider, model, hasImages ? images.length : 0);
@@ -162,7 +180,7 @@ async function handleChatInner(request, env) {
     return json(
       {
         reply: config.maintenance.message,
-        credits: await getBalance(env, identity, effectiveCap),
+        credits: acct.balance,
         cap: effectiveCap,
         isSmart,
         snack: false,
@@ -183,7 +201,7 @@ async function handleChatInner(request, env) {
   // 크레딧은 서버(KV)가 유일한 출처다 — 클라이언트가 뭐라고 보내든 무시하고
   // 서버에 저장된 실제 잔액만 본다. (예전엔 클라이언트가 보낸 숫자를 그대로
   // 믿고 차감만 해서, 설정 화면에서 숫자를 직접 입력하면 무한 충전이 가능했음)
-  const currentBalance = await getBalance(env, identity, effectiveCap);
+  const currentBalance = acct.balance;
 
   if (currentBalance < cost) {
     return json({
@@ -277,7 +295,13 @@ async function handleChatInner(request, env) {
   }
 
   reply = applyPersonaFlourish(reply, level);
-  const spend = await spendCredits(env, identity, cost, effectiveCap);
+  const spend = await spendAccount(env, acct, cost);
+  if (!spend.ok) {
+    return json({
+      reply: "통합 크레딧을 쓰는 데 실패했다능... 크레딧이 모자라거나 연결이 안 된다능 🦕",
+      credits: acct.balance, cap: effectiveCap, isSmart, snack: false, outOfCredits: true,
+    });
+  }
   const snack = maybeSnackLine(cost);
 
   return json({
@@ -351,27 +375,6 @@ async function handleAdmin(request, env, url) {
       return json({ error: "delta 또는 setTo 숫자가 필요하다능" }, { status: 400 });
     }
 
-    if (path === "coupon/list" && request.method === "GET") {
-      return json({ items: await listCoupons(env) });
-    }
-
-    if (path === "coupon/create" && request.method === "POST") {
-      const body = await request.json();
-      try {
-        const coupon = await createCoupon(env, body);
-        return json(coupon);
-      } catch (err) {
-        return json({ error: err.message }, { status: 400 });
-      }
-    }
-
-    if (path === "coupon/delete" && request.method === "POST") {
-      const body = await request.json();
-      if (!body.code) return json({ error: "code가 필요하다능" }, { status: 400 });
-      await deleteCoupon(env, body.code);
-      return json({ ok: true });
-    }
-
     return json({ error: "알 수 없는 관리자 API다능" }, { status: 404 });
   } catch (err) {
     return json({ error: `관리자 API 오류다능... (${err?.message || err})` }, { status: 500 });
@@ -418,74 +421,48 @@ async function handleUsage(request, env, url) {
   try {
     const uid = url.searchParams.get("uid");
     const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
-    const identity = resolveIdentity(request, uid);
     const config = await getConfig(env);
-    const isGuest = !uid;
-    const economy = await resolveEconomy(env, config, identity, isGuest, idToken);
-    const [credits, today] = await Promise.all([
-      getBalance(env, identity, economy.cap),
-      getUsageSummary(env, identity, economy.dailyLimits),
-    ]);
-    return json({ credits, cap: economy.cap, isGuest, today, plan: economy.plan });
+    const acct = await getAccount(request, env, config, uid, idToken);
+    const today = await getUsageSummary(env, acct.identity, acct.dailyLimits);
+    return json({ credits: acct.balance, cap: acct.cap, isGuest: acct.isGuest, today, plan: acct.plan });
   } catch (err) {
     return json({ error: `사용 정보를 못 불러왔다능... (${err.message})` }, { status: 500 });
   }
 }
 
-// 요금제/크레딧 충전/쿠폰. 전부 로그인(idToken)이 필요하다 — 게스트는 IP 기반
-// 신원이라 구매/쿠폰 같은 영구적인 혜택을 붙이기엔 적합하지 않다.
+// PAL 통합 요금제·크레딧·쿠폰 (ramalok.kr 관리자 > 요금·크레딧·쿠폰이 출처).
+// 로그인(ID 토큰)이 필요하고, 쿠폰 등록은 메인 사이트 API에 그대로 전달한다.
 async function handleBilling(request, env, url) {
   try {
     const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
     const user = await verifyIdToken(idToken);
     if (!user) return json({ error: "로그인이 필요하다능!" }, { status: 401 });
-    const identity = `uid:${user.uid}`;
     const path = url.pathname.replace(/\/+$/, "").slice("/api/billing/".length);
     const config = await getConfig(env);
 
-    if (path === "status" && request.method === "GET") {
-      const economy = await resolveEconomy(env, config, identity, false, idToken);
-      const credits = await getBalance(env, identity, economy.cap);
-      return json({
-        credits,
-        cap: economy.cap,
-        plan: economy.plan,
-        capBonus: economy.capBonus,
-        packs: CREDIT_PACKS,
-        proPlan: PRO_PLAN_INFO,
-      });
-    }
-
-    if (path === "purchase" && request.method === "POST") {
-      const bodyIn = await request.json();
-      const result = await purchaseCreditPack(env, identity, bodyIn.packId, bodyIn.card);
-      if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false, idToken);
-      const credits = await getBalance(env, identity, economy.cap);
-      return json({ ...result, credits, cap: economy.cap });
-    }
-
-    if (path === "subscribe" && request.method === "POST") {
-      const bodyIn = await request.json();
-      const result = await subscribePro(env, identity, bodyIn.card);
-      if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false, idToken);
-      const credits = await getBalance(env, identity, economy.cap);
-      return json({ ...result, credits, cap: economy.cap });
-    }
-
     if (path === "coupon" && request.method === "POST") {
       const bodyIn = await request.json();
-      const result = await redeemCoupon(env, identity, bodyIn.code);
+      const result = await redeemUnifiedCoupon(idToken, bodyIn.code);
       if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false, idToken);
-      const credits = await getBalance(env, identity, economy.cap);
-      return json({ ...result, credits, cap: economy.cap });
+    }
+
+    if ((path === "status" && request.method === "GET") || (path === "coupon" && request.method === "POST")) {
+      const acct = await getAccount(request, env, config, user.uid, idToken);
+      return json({
+        ok: true,
+        credits: acct.balance,
+        cap: acct.cap,
+        local: acct.local,
+        unifiedCredits: acct.unified?.credits ?? 0,
+        unifiedAvailable: !!acct.unified?.available,
+        plan: acct.plan,
+        planUntil: acct.unified?.planUntil || 0,
+      });
     }
 
     return json({ error: "알 수 없는 요청이다능" }, { status: 404 });
   } catch (err) {
-    return json({ error: `요금제/결제 처리 중 문제가 생겼다능... (${err?.message || err})` }, { status: 500 });
+    return json({ error: `요금제 처리 중 문제가 생겼다능... (${err?.message || err})` }, { status: 500 });
   }
 }
 
@@ -509,12 +486,10 @@ export default {
     if (apiPath === "/api/credits" && request.method === "GET") {
       const uid = url.searchParams.get("uid");
       const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
-      const identity = resolveIdentity(request, uid);
       try {
         const config = await getConfig(env);
-        const economy = await resolveEconomy(env, config, identity, !uid, idToken);
-        const credits = await getBalance(env, identity, economy.cap);
-        return json({ credits, cap: economy.cap, plan: economy.plan });
+        const acct = await getAccount(request, env, config, uid, idToken);
+        return json({ credits: acct.balance, cap: acct.cap, plan: acct.plan });
       } catch (err) {
         return json({ error: `사용량을 못 불러왔다능... (${err.message})` }, { status: 500 });
       }
@@ -527,19 +502,15 @@ export default {
     if (apiPath === "/api/bonus" && request.method === "POST") {
       try {
         const bodyIn = await request.json();
-        const identity = resolveIdentity(request, bodyIn.uid);
         const config = await getConfig(env);
-        const economy = await resolveEconomy(env, config, identity, !bodyIn.uid, bodyIn.idToken);
-        const cap = economy.cap;
-        if (bodyIn.type === "signup") {
-          const result = await claimSignupBonus(env, identity, cap);
-          return json({ ...result, cap });
-        }
-        if (bodyIn.type === "sticker") {
-          const result = await claimStickerBonus(env, identity, cap);
-          return json({ ...result, cap });
-        }
-        return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
+        const acct = await getAccount(request, env, config, bodyIn.uid, bodyIn.idToken);
+        // 보너스는 로컬(KV) 기본 크레딧에만 붙고 localCap을 넘지 않는다. 통합 크레딧은 건드리지 않는다.
+        let result;
+        if (bodyIn.type === "signup") result = await claimSignupBonus(env, acct.identity, acct.localCap);
+        else if (bodyIn.type === "sticker") result = await claimStickerBonus(env, acct.identity, acct.localCap);
+        else return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
+        const balance = result.balance + (acct.unified?.credits || 0);
+        return json({ ...result, balance, cap: acct.cap });
       } catch (err) {
         return json({ error: `보너스 지급 중 문제가 생겼다능... (${err.message})` }, { status: 500 });
       }

@@ -69,12 +69,9 @@
   const billingSection = document.getElementById("billingSection");
   const billingDivider = document.getElementById("billingDivider");
   const planStatus = document.getElementById("planStatus");
-  const subscribeProBtn = document.getElementById("subscribeProBtn");
+  const unifiedCreditsLine = document.getElementById("unifiedCreditsLine");
   const couponInput = document.getElementById("couponInput");
   const couponBtn = document.getElementById("couponBtn");
-  const cardNumberInput = document.getElementById("cardNumber");
-  const cardExpInput = document.getElementById("cardExp");
-  const cardCvcInput = document.getElementById("cardCvc");
 
   const chatWrap = document.querySelector(".chat-wrap");
   const stickerBtn = document.getElementById("stickerBtn");
@@ -245,14 +242,7 @@
     }
   }
 
-  // ---------------- 요금제 / 크레딧 충전 / 쿠폰 (전부 테스트 모드, 로그인 필요) ----------------
-  function currentTestCard() {
-    return {
-      number: cardNumberInput?.value.trim() || "0000-0000-0000-0000",
-      exp: cardExpInput?.value.trim() || "00/00",
-      cvc: cardCvcInput?.value.trim() || "000",
-    };
-  }
+  // ---------------- PAL 통합 요금제 / 크레딧 / 쿠폰 (로그인 필요) ----------------
   async function billingFetch(path, bodyIn) {
     const idToken = await getFreshIdToken();
     const res = await fetch(`api/billing/${path}`, {
@@ -263,9 +253,18 @@
     const data = await res.json().catch(() => ({ error: "응답을 이해 못했다능" }));
     return { ok: res.ok, data };
   }
+  function showBilling(data) {
+    renderCredits(data.credits, data.cap);
+    const plan = data.plan || { id: "free", name: "무료" };
+    const until = data.planUntil ? ` (${new Date(data.planUntil).toLocaleDateString("ko-KR")}까지)` : "";
+    planStatus.textContent = `요금제: ${plan.id === "free" ? "무료" : `⭐ ${plan.name}${until}`}`;
+    unifiedCreditsLine.textContent = data.unifiedAvailable
+      ? `크레딧 ${data.credits} = 빨드 기본 ${data.local} + PAL 통합 ${data.unifiedCredits}`
+      : "PAL 통합 크레딧을 못 불러왔다능 (빨드 기본 크레딧만 보인다능)";
+  }
   async function refreshBillingSection() {
     if (!billingSection) return;
-    const show = !!currentUser; // 게스트는 요금제/충전/쿠폰 자체가 안 보임 (로그인 필요)
+    const show = !!currentUser; // 게스트는 안 보임 (로그인 필요)
     billingSection.hidden = !show;
     if (billingDivider) billingDivider.hidden = !show;
     if (!show) return;
@@ -273,54 +272,17 @@
     const { ok, data } = await billingFetch("status");
     if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
     if (!ok) { planStatus.textContent = "요금제 정보를 못 불러왔다능..."; return; }
-    renderCredits(data.credits, data.cap);
-    const isPro = data.plan?.tier === "pro";
-    if (!isPro) {
-      planStatus.textContent = "요금제: 무료";
-    } else if (data.plan.source === "pal_canva") {
-      planStatus.textContent = "요금제: ⭐ PRO (PAL Design PRO 구독으로 통합 적용됨)";
-    } else if (data.plan.expiresAt) {
-      planStatus.textContent = `요금제: ⭐ PRO (${new Date(data.plan.expiresAt).toLocaleDateString("ko-KR")}까지)`;
-    } else {
-      planStatus.textContent = "요금제: ⭐ PRO";
-    }
-    if (subscribeProBtn) subscribeProBtn.disabled = isPro;
+    showBilling(data);
   }
-  subscribeProBtn?.addEventListener("click", async () => {
-    subscribeProBtn.disabled = true;
-    const { ok, data } = await billingFetch("subscribe", { card: currentTestCard() });
-    if (ok) {
-      renderCredits(data.credits, data.cap);
-      addMessage("assistant", "PRO 구독 완료다능! (테스트 결제) 크레딧 최대치랑 하루 제한이 늘어났다능 ⭐", { extraClass: "snack" });
-      refreshBillingSection();
-    } else {
-      addMessage("assistant", data.error || "구독에 실패했다능...", { extraClass: "error" });
-      subscribeProBtn.disabled = false;
-    }
-  });
-  document.querySelectorAll(".pack-btn").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      const { ok, data } = await billingFetch("purchase", { packId: btn.dataset.pack, card: currentTestCard() });
-      if (ok) {
-        renderCredits(data.credits, data.cap);
-        addMessage("assistant", `크레딧 +${data.amount} 충전됐다능! (테스트 결제) 최대치도 같이 늘어났다능 🎉`, { extraClass: "snack" });
-      } else {
-        addMessage("assistant", data.error || "충전에 실패했다능...", { extraClass: "error" });
-      }
-      btn.disabled = false;
-    });
-  });
   couponBtn?.addEventListener("click", async () => {
     const code = couponInput.value.trim();
     if (!code) return;
     couponBtn.disabled = true;
     const { ok, data } = await billingFetch("coupon", { code });
     if (ok) {
-      renderCredits(data.credits, data.cap);
       couponInput.value = "";
-      addMessage("assistant", "쿠폰 적용됐다능! 🎁", { extraClass: "snack" });
-      refreshBillingSection();
+      showBilling(data);
+      addMessage("assistant", "쿠폰 등록됐다능! 🎁", { extraClass: "snack" });
     } else {
       addMessage("assistant", data.error || "쿠폰을 쓸 수 없다능...", { extraClass: "error" });
     }
