@@ -11,6 +11,8 @@ import { checkAndConsumeDailyLimit, getUsageSummary } from "./rate-limit.js";
 import {
   resolveIdentity,
   getBalance,
+  getBalanceWithRefill,
+  markSpent,
   spendCredits,
   claimSignupBonus,
   claimStickerBonus,
@@ -115,16 +117,19 @@ async function getAccount(request, env, config, uid, idToken) {
   if (!verifiedUid) identity = await guestIdentity(request, env, identity);
   if (!verifiedUid) {
     const cap = config.startingCreditsGuest;
-    const local = await getBalance(env, identity, cap);
+    const { balance: local, refill } = await getBalanceWithRefill(env, identity, cap, config.refillIntervalMin, config.refillMaxPer24h);
     return {
-      isGuest: true, identity, idToken: null, localCap: cap, local, unified: null,
+      isGuest: true, identity, idToken: null, localCap: cap, local, unified: null, refill,
       cap, balance: local, dailyLimits: config.dailyLimitsGuest, plan: { id: "free", name: "무료" },
     };
   }
   const localCap = config.startingCredits;
-  const [local, unified] = await Promise.all([getBalance(env, identity, localCap), getUnified(idToken)]);
+  const [{ balance: local, refill }, unified] = await Promise.all([
+    getBalanceWithRefill(env, identity, localCap, config.refillIntervalMin, config.refillMaxPer24h),
+    getUnified(idToken),
+  ]);
   return {
-    isGuest: false, identity, idToken, localCap, local, unified,
+    isGuest: false, identity, idToken, localCap, local, unified, refill,
     // cap은 "이만큼까지 찰 수 있다"는 게이지 기준: 로컬 기본 + (요금제 지급량 또는 실제 통합 크레딧 중 큰 쪽).
     // 잔액(local + 통합)이 항상 cap 이하라서 "135/100" 같은 표시가 안 나온다.
     cap: localCap + Math.max(unified.plan.credits, unified.credits),
@@ -142,7 +147,10 @@ async function spendAccount(env, acct, cost) {
     const r = await spendUnified(acct.idToken, rest);
     if (!r.ok) return { ok: false, balance: acct.balance };
   }
-  if (fromLocal > 0) await spendCredits(env, acct.identity, fromLocal, acct.localCap);
+  if (fromLocal > 0) {
+    await spendCredits(env, acct.identity, fromLocal, acct.localCap);
+    await markSpent(env, acct.identity);
+  }
   return { ok: true, balance: acct.balance - cost };
 }
 
@@ -233,12 +241,15 @@ async function handleChatInner(request, env) {
   const currentBalance = acct.balance;
 
   if (currentBalance < cost) {
+    const wait = acct.refill?.nextAt ? Math.max(1, Math.ceil((acct.refill.nextAt - Date.now()) / 60000)) : null;
+    const when = wait ? ` ${wait >= 60 ? `${Math.floor(wait / 60)}시간 ${wait % 60}분` : `${wait}분`} 뒤에 다시 충전된다능!` : "";
     return json({
       reply: isGuest
-        ? "사용량이 다 떨어졌다능... 로그인하면 더 쓸 수 있다능! 🦕"
-        : "사용량이 다 떨어졌다능... 내일 다시 놀아달라능! 🦕",
+        ? `사용량이 다 떨어졌다능... 로그인하면 더 쓸 수 있다능!${when} 🦕`
+        : `사용량이 다 떨어졌다능...${when || " 조금 있다 다시 놀아달라능!"} 🦕`,
       credits: currentBalance,
       cap: effectiveCap,
+      refill: acct.refill,
       isSmart,
       snack: false,
       outOfCredits: true,
@@ -338,6 +349,7 @@ async function handleChatInner(request, env) {
     reply,
     credits: spend.balance,
     cap: effectiveCap,
+    refill: (await getBalanceWithRefill(env, identity, acct.localCap, config.refillIntervalMin, config.refillMaxPer24h)).refill,
     isSmart,
     smartLevel: level,
     sunset: sunsetLabel,
@@ -454,7 +466,7 @@ async function handleUsage(request, env, url) {
     const config = await getConfig(env);
     const acct = await getAccount(request, env, config, uid, idToken);
     const today = await getUsageSummary(env, acct.identity, acct.dailyLimits);
-    return json({ credits: acct.balance, cap: acct.cap, isGuest: acct.isGuest, today, plan: acct.plan });
+    return json({ credits: acct.balance, cap: acct.cap, isGuest: acct.isGuest, today, plan: acct.plan, refill: acct.refill });
   } catch (err) {
     return json({ error: `사용 정보를 못 불러왔다능... (${err.message})` }, { status: 500 });
   }
@@ -486,6 +498,7 @@ async function handleBilling(request, env, url) {
         unifiedCredits: acct.unified?.credits ?? 0,
         unifiedAvailable: !!acct.unified?.available,
         plan: acct.plan,
+        refill: acct.refill,
         planUntil: acct.unified?.planUntil || 0,
       });
     }
@@ -519,7 +532,7 @@ export default {
       try {
         const config = await getConfig(env);
         const acct = await getAccount(request, env, config, uid, idToken);
-        return json({ credits: acct.balance, cap: acct.cap, plan: acct.plan });
+        return json({ credits: acct.balance, cap: acct.cap, plan: acct.plan, refill: acct.refill });
       } catch (err) {
         return json({ error: `사용량을 못 불러왔다능... (${err.message})` }, { status: 500 });
       }

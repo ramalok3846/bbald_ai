@@ -20,6 +20,9 @@ function creditsKey(identity) {
 function signupBonusKey(identity) {
   return `bonus-signup:${identity}`;
 }
+function refillKey(identity) {
+  return `refill:${identity}`;
+}
 function stickerCooldownKey(identity) {
   return `bonus-sticker-cooldown:${identity}`;
 }
@@ -124,4 +127,65 @@ export async function listCreditIdentities(env, cursor) {
     })
   );
   return { items, cursor: page.cursor || null, done: page.list_complete };
+}
+
+// ---------------- 자동 재충전 ----------------
+// 기본(로컬) 크레딧이 줄기 시작한 시점(anchor)부터 intervalMin분이 지나면 cap까지 꽉 채워주고,
+// 최근 24시간 안에 maxPer24h번까지만 해준다. 요청이 올 때 계산하는 방식이라 따로 스케줄러가 없다.
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function loadRefill(env, identity) {
+  try {
+    const raw = await env.RATE_LIMIT_KV.get(refillKey(identity));
+    const r = raw ? JSON.parse(raw) : {};
+    return { anchor: Number(r.anchor) || null, hist: Array.isArray(r.hist) ? r.hist.map(Number).filter(Number.isFinite) : [] };
+  } catch {
+    return { anchor: null, hist: [] };
+  }
+}
+async function saveRefill(env, identity, rec) {
+  await env.RATE_LIMIT_KV.put(refillKey(identity), JSON.stringify(rec), { expirationTtl: 3 * 24 * 3600 });
+}
+
+// 잔액을 읽으면서 재충전 시간이 됐으면 채워준다. { balance, refill: { nextAt, left, max } }
+export async function getBalanceWithRefill(env, identity, cap, intervalMin, maxPer24h, now = Date.now()) {
+  let balance = await getBalance(env, identity, cap);
+  if (!env.RATE_LIMIT_KV) return { balance, refill: { nextAt: null, left: maxPer24h, max: maxPer24h } };
+  const rec = await loadRefill(env, identity);
+  rec.hist = rec.hist.filter((t) => t > now - DAY_MS);
+  const intervalMs = intervalMin * 60 * 1000;
+  let dirty = false;
+
+  if (balance < cap) {
+    if (!rec.anchor) { rec.anchor = now; dirty = true; } // 줄어든 걸 처음 본 시점부터 시간을 센다
+    if (now - rec.anchor >= intervalMs && rec.hist.length < maxPer24h) {
+      balance = await setBalance(env, identity, cap);
+      rec.hist.push(now);
+      rec.anchor = null;
+      dirty = true;
+    }
+  } else if (rec.anchor) {
+    rec.anchor = null; // 이미 꽉 찼으면 타이머 해제
+    dirty = true;
+  }
+
+  const left = Math.max(0, maxPer24h - rec.hist.length);
+  let nextAt = null;
+  if (balance < cap) {
+    if (left > 0) nextAt = Math.max(now, (rec.anchor || now) + intervalMs);
+    else if (rec.hist.length) nextAt = Math.min(...rec.hist) + DAY_MS; // 가장 오래된 충전이 24시간 지나면 다시 가능
+  }
+  if (dirty) await saveRefill(env, identity, rec);
+  return { balance, refill: { nextAt, left, max: maxPer24h } };
+}
+
+// 로컬 크레딧을 쓴 뒤 호출: 재충전 타이머가 아직 안 돌고 있으면 지금부터 시작한다.
+export async function markSpent(env, identity, now = Date.now()) {
+  if (!env.RATE_LIMIT_KV) return;
+  const rec = await loadRefill(env, identity);
+  if (!rec.anchor) {
+    rec.anchor = now;
+    rec.hist = rec.hist.filter((t) => t > now - DAY_MS);
+    await saveRefill(env, identity, rec);
+  }
 }

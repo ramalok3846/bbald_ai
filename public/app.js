@@ -210,6 +210,29 @@
     }
   }
 
+  // 자동 재충전 안내: "다음 충전 1시간 20분 후 · 오늘 남은 충전 4/5"
+  const refillNote = document.getElementById("refillNote");
+  let refillTimer = null;
+  function renderRefill(refill) {
+    if (!refillNote) return;
+    clearTimeout(refillTimer);
+    if (!refill) { refillNote.textContent = ""; return; }
+    const draw = () => {
+      if (!refill.nextAt) { refillNote.textContent = `충전 ${refill.left}/${refill.max}회 남음`; return; }
+      const min = Math.max(0, Math.ceil((refill.nextAt - Date.now()) / 60000));
+      const t = min >= 60 ? `${Math.floor(min / 60)}시간 ${min % 60}분` : `${min}분`;
+      refillNote.textContent = `다음 충전 ${t} 후 · 남은 충전 ${refill.left}/${refill.max}`;
+      if (min > 0) refillTimer = setTimeout(draw, 30000);
+      else refillNote.textContent = "곧 충전돼요! 잠시 후 다시 확인해봐요";
+    };
+    if (refill.left === 0 && refill.nextAt) {
+      const min = Math.max(0, Math.ceil((refill.nextAt - Date.now()) / 60000));
+      refillNote.textContent = `오늘 충전 모두 사용 · ${Math.floor(min / 60)}시간 ${min % 60}분 뒤 가능`;
+      return;
+    }
+    draw();
+  }
+
   async function syncCreditsFromServer() {
     const gen = creditsGen;
     try {
@@ -222,7 +245,7 @@
       if (res.ok) {
         const data = await res.json();
         if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
-        if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
+        if (typeof data.credits === "number") { renderCredits(data.credits, data.cap); renderRefill(data.refill); }
       }
     } catch {}
   }
@@ -245,6 +268,7 @@
       const data = await res.json();
       if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
       renderCredits(data.credits, data.cap);
+      renderRefill(data.refill);
       const rows = Object.entries(data.today || {})
         .map(([provider, info]) => {
           const label = PROVIDER_LABELS[provider] || provider;
@@ -270,6 +294,7 @@
   }
   function showBilling(data) {
     renderCredits(data.credits, data.cap);
+    renderRefill(data.refill);
     const plan = data.plan || { id: "free", name: "무료" };
     const until = data.planUntil ? ` (${new Date(data.planUntil).toLocaleDateString("ko-KR")}까지)` : "";
     planStatus.textContent = `요금제: ${plan.id === "free" ? "무료" : `⭐ ${plan.name}${until}`}`;
@@ -944,6 +969,7 @@
 
       if (!res.ok) {
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
+        renderRefill(data.refill);
         addMessage("assistant", data.error || data.reply || "빨드가 넘어졌다능...", {
           extraClass: data.dailyLimitReached ? "snack" : "error",
         });
@@ -951,6 +977,7 @@
         addMessage("assistant", data.reply);
         currentMessages.push({ role: "assistant", content: data.reply });
         renderCredits(data.credits, data.cap);
+        renderRefill(data.refill);
         if (data.snack) {
           addMessage("assistant", data.snack, { extraClass: "snack" });
         }

@@ -30,6 +30,10 @@ const DEFAULTS = {
   },
   startingCredits: 100, // 로그인 회원 시작값
   startingCreditsGuest: 30, // 게스트 시작값 (회원보다 적게)
+  // 자동 재충전: 크레딧이 줄기 시작한 때부터 refillIntervalMin분 뒤에 기본 크레딧을 꽉 채워주고,
+  // 24시간 동안 최대 refillMaxPer24h번까지만 해준다 (게스트/회원 공통, 기본 크레딧에만 적용).
+  refillIntervalMin: 90,
+  refillMaxPer24h: 5,
 };
 
 function merge(patch) {
@@ -40,6 +44,10 @@ function merge(patch) {
     startingCredits: typeof patch.startingCredits === "number" ? patch.startingCredits : DEFAULTS.startingCredits,
     startingCreditsGuest:
       typeof patch.startingCreditsGuest === "number" ? patch.startingCreditsGuest : DEFAULTS.startingCreditsGuest,
+    refillIntervalMin:
+      typeof patch.refillIntervalMin === "number" && patch.refillIntervalMin > 0 ? patch.refillIntervalMin : DEFAULTS.refillIntervalMin,
+    refillMaxPer24h:
+      typeof patch.refillMaxPer24h === "number" && patch.refillMaxPer24h >= 0 ? patch.refillMaxPer24h : DEFAULTS.refillMaxPer24h,
   };
 }
 
