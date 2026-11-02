@@ -88,35 +88,32 @@
   // provider별 모델 목록(실제 모델명/설명/비용 배율/로그인 필요 여부) — 서버
   // (src/worker.js의 MODEL_INFO)와 값이 맞아야 한다. "모델명과 설명, 상세설정"
   // 요청 반영: provider를 바꾸면 모델 선택도 그 provider의 진짜 모델들로 바뀐다.
-  const MODEL_CATALOG = {
-    builtin: [
-      { value: "default", label: "🦕 빨드 두뇌", desc: "서버에 내장된 빨드만의 반응이다능 (AI 호출 없음, 제일 가벼움)", cost: 1 },
-    ],
-    cloudflare: [
-      { value: "default", label: "☁️ Cloudflare 두뇌", desc: "Cloudflare Workers AI(Llama 계열)로 답한다능", cost: 1 },
-    ],
-    anthropic: [
-      { value: "haiku-4.5", label: "⚡ 빨드 라이트", desc: "claude-haiku-4.5 — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-      { value: "sonnet-5", label: "🦕 빨드 기본", desc: "claude-sonnet-5 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-      { value: "opus-5.5", label: "🧠 빨드 딥씽킹", desc: "claude-opus-5.5 — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-      { value: "fable-5.1", label: "📖 빨드 스토리", desc: "claude-fable-5.1 — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
-    ],
-    openai: [
-      // 라벨은 Claude와 완전히 동일하게("빨드 라이트/기본/딥씽킹/스토리") 맞춘다 —
-      // "AI(provider)는 여러 개여도 모델 단계 이름은 다 똑같아야 한다"는 요청.
-      // 실제로 어떤 모델이 불려가는지는 desc에 진짜 모델 id로 적어둔다.
-      { value: "gpt-5.1-mini", label: "⚡ 빨드 라이트", desc: "gpt-5.1-mini — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-      { value: "gpt-5.1", label: "🦕 빨드 기본", desc: "gpt-5.1 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-      { value: "gpt-5.1-pro", label: "🧠 빨드 딥씽킹", desc: "gpt-5.1-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-      { value: "gpt-5.1-creative", label: "📖 빨드 스토리", desc: "gpt-5.1-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
-    ],
-    gemini: [
-      { value: "gemini-3.8-flash-lite", label: "⚡ 빨드 라이트", desc: "gemini-3.8-flash-lite — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-      { value: "gemini-3.8-flash", label: "🦕 빨드 기본", desc: "gemini-3.8-flash — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-      { value: "gemini-3.8-pro", label: "🧠 빨드 딥씽킹", desc: "gemini-3.8-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-      { value: "gemini-3.8-pro-creative", label: "📖 빨드 스토리", desc: "gemini-3.8-pro-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
-    ],
+  // 모든 AI가 똑같은 4단계(라이트/기본/딥씽킹/스토리)를 갖는다. 선택창의 value는
+  // 단계 키(lite/basic/deep/story)라서 AI를 바꿔도 같은 단계가 그대로 유지되고,
+  // 실제로 어떤 모델이 불려가는지는 서버(src/worker.js MODEL_IDS)가 AI별로 정한다.
+  const TIERS = [
+    { value: "lite", label: "⚡ 빨드 라이트", desc: "가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+    { value: "basic", label: "🦕 빨드 기본", desc: "속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+    { value: "deep", label: "🧠 빨드 딥씽킹", desc: "가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+    { value: "story", label: "📖 빨드 스토리", desc: "표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
+  ];
+  const REAL_MODEL = {
+    builtin: { lite: "빨드 내장 반응", basic: "빨드 내장 반응", deep: "빨드 내장 반응", story: "빨드 내장 반응" },
+    cloudflare: {
+      lite: "llama-3.1-8b", basic: "llama-3.3-70b", deep: "llama-3.3-70b", story: "llama-3.3-70b",
+    },
+    anthropic: { lite: "claude-haiku-4.5", basic: "claude-sonnet-5", deep: "claude-opus-5.5", story: "claude-fable-5.1" },
+    openai: { lite: "gpt-5.1-mini", basic: "gpt-5.1", deep: "gpt-5.1-pro", story: "gpt-5.1-creative" },
+    gemini: {
+      lite: "gemini-3.8-flash-lite", basic: "gemini-3.8-flash", deep: "gemini-3.8-pro", story: "gemini-3.8-pro-creative",
+    },
   };
+  const MODEL_CATALOG = Object.fromEntries(
+    Object.keys(REAL_MODEL).map((prov) => [
+      prov,
+      TIERS.map((t) => ({ ...t, desc: `${REAL_MODEL[prov][t.value]} — ${t.desc}` })),
+    ])
+  );
   function isMemberOnlyModel(provider, model) {
     return MODEL_CATALOG[provider]?.find((m) => m.value === model)?.memberOnly === true;
   }
@@ -343,7 +340,7 @@
       modelSelect.appendChild(opt);
     }
     const stillValid = models.some((m) => m.value === prevValue && !(isGuest && m.memberOnly));
-    modelSelect.value = stillValid ? prevValue : (models.find((m) => !(isGuest && m.memberOnly)) || models[0])?.value || "";
+    modelSelect.value = stillValid ? prevValue : "basic"; // 처음/잘못된 값이면 기본 단계로
     updateModelDesc();
   }
   function updateModelLocks() {

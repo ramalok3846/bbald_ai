@@ -43,37 +43,39 @@ const BASE_COST = {
   gemini: 12,
 };
 const IMAGE_COST = 3; // 이미지 한 장당 추가 비용 (여러 장이면 장당 더 깎인다)
-// 어느 AI를 고르든 같은 4단계(라이트/기본/딥씽킹/스토리)로 통일한다 —
-// provider마다 모델 개수가 다르면 헷갈리니, 비용 배율·로그인 필요 여부는
-// 전부 동일하게 두고 실제 모델 이름만 provider에 맞게 다르게 쓴다.
-const MODEL_INFO = {
-  anthropic: {
-    "haiku-4.5": { mult: 1, memberOnly: false }, // 빨드 라이트
-    "sonnet-5": { mult: 1.5, memberOnly: false }, // 빨드 기본
-    "opus-5.5": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
-    "fable-5.1": { mult: 2, memberOnly: true }, // 빨드 스토리
-  },
-  openai: {
-    "gpt-5.1-mini": { mult: 1, memberOnly: false }, // 빨드 라이트
-    "gpt-5.1": { mult: 1.5, memberOnly: false }, // 빨드 기본
-    "gpt-5.1-pro": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
-    "gpt-5.1-creative": { mult: 2, memberOnly: true }, // 빨드 스토리
-  },
-  gemini: {
-    "gemini-3.8-flash-lite": { mult: 1, memberOnly: false }, // 빨드 라이트
-    "gemini-3.8-flash": { mult: 1.5, memberOnly: false }, // 빨드 기본
-    "gemini-3.8-pro": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
-    "gemini-3.8-pro-creative": { mult: 2, memberOnly: true }, // 빨드 스토리
-  },
+// 모든 AI(빨드 기본/Cloudflare/Claude/ChatGPT/Gemini)가 똑같은 4단계 모델을 갖는다.
+// 클라이언트는 단계 키(lite/basic/deep/story)만 보내고, 실제로 어떤 모델이 불려가는지는
+// 여기서 provider별로 정한다 — 비용 배율·로그인 필요 여부·말투 힌트는 전부 단계 기준이라
+// 어느 AI를 골라도 똑같다.
+const TIERS = {
+  lite: { mult: 1, memberOnly: false, hint: "짧고 간단하게, 핵심만 가볍게 답해라." },
+  basic: { mult: 1.5, memberOnly: false, hint: "" },
+  deep: { mult: 3, memberOnly: true, hint: "차근차근 깊게 생각해서 조금 더 자세히 답해라." },
+  story: { mult: 2, memberOnly: true, hint: "이야기하듯 생생하고 표현력 풍부하게 답해라." },
 };
-function computeCost(provider, model, imageCount = 0) {
-  const base = BASE_COST[provider] ?? 8;
-  // builtin/cloudflare는 모델 선택이 없으므로(단일 모델) 배율은 항상 1.
-  const mult = MODEL_INFO[provider]?.[model]?.mult ?? 1;
-  return Math.max(1, Math.round(base * mult)) + imageCount * IMAGE_COST;
+const MODEL_IDS = {
+  anthropic: { lite: "haiku-4.5", basic: "sonnet-5", deep: "opus-5.5", story: "fable-5.1" },
+  openai: { lite: "gpt-5.1-mini", basic: "gpt-5.1", deep: "gpt-5.1-pro", story: "gpt-5.1-creative" },
+  gemini: {
+    lite: "gemini-3.8-flash-lite", basic: "gemini-3.8-flash", deep: "gemini-3.8-pro", story: "gemini-3.8-pro-creative",
+  },
+  cloudflare: {
+    lite: "@cf/meta/llama-3.1-8b-instruct-fast",
+    basic: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    deep: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    story: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  },
+  builtin: {},
+};
+function normalizeTier(t) {
+  return TIERS[t] ? t : "basic";
 }
-function isMemberOnlyModel(provider, model) {
-  return MODEL_INFO[provider]?.[model]?.memberOnly === true;
+function computeCost(provider, tier, imageCount = 0) {
+  const base = BASE_COST[provider] ?? 8;
+  return Math.max(1, Math.round(base * TIERS[normalizeTier(tier)].mult)) + imageCount * IMAGE_COST;
+}
+function isMemberOnlyModel(tier) {
+  return TIERS[normalizeTier(tier)].memberOnly;
 }
 
 // 요청 한 건의 계정 상태. 회원(검증된 Firebase ID 토큰)이면 로컬(KV) 기본 크레딧에
@@ -150,7 +152,7 @@ async function handleChatInner(request, env) {
     message = "",
     history = [],
     provider = "builtin",
-    model = "sonnet-5",
+    model = "basic", // 단계 키: lite | basic | deep | story
     apiKey = "",
     uid = null, // Firebase 로그인 사용자면 uid, 아니면 null(게스트는 IP로 식별)
     images = [], // [{ dataUrl, mimeType }] — 이미지 여러 장 첨부 가능
@@ -174,7 +176,9 @@ async function handleChatInner(request, env) {
   const effectiveDailyLimits = acct.dailyLimits;
 
   const { isSmart, level, sunsetLabel } = getSmartInfo();
-  const cost = computeCost(provider, model, hasImages ? images.length : 0);
+  const tier = normalizeTier(model);
+  const realModel = MODEL_IDS[provider]?.[tier];
+  const cost = computeCost(provider, tier, hasImages ? images.length : 0);
 
   if (config.maintenance?.enabled) {
     return json(
@@ -194,7 +198,7 @@ async function handleChatInner(request, env) {
   if (isGuest && hasImages) {
     return json({ error: "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒" }, { status: 403 });
   }
-  if (isGuest && isMemberOnlyModel(provider, model)) {
+  if (isGuest && isMemberOnlyModel(tier)) {
     return json({ error: "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒" }, { status: 403 });
   }
 
@@ -254,7 +258,7 @@ async function handleChatInner(request, env) {
     );
   }
 
-  const systemPrompt = buildSystemPrompt(level);
+  const systemPrompt = [buildSystemPrompt(level), TIERS[tier].hint].filter(Boolean).join("\n");
   let reply;
   try {
     if (provider === "builtin" || provider === "cloudflare") {
@@ -269,6 +273,7 @@ async function handleChatInner(request, env) {
       } else {
         reply = await callCloudflareAI({
           env,
+          model: realModel,
           systemPrompt,
           history,
           message: hasImages
@@ -278,15 +283,15 @@ async function handleChatInner(request, env) {
       }
     } else if (provider === "anthropic") {
       if (!apiKey) return json({ error: "클로드 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callAnthropic({ apiKey, model, systemPrompt, history, message, images });
+      reply = await callAnthropic({ apiKey, model: realModel, systemPrompt, history, message, images });
     } else if (provider === "openai") {
       if (!apiKey) return json({ error: "챗지피티 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callOpenAI({ apiKey, model, systemPrompt, history, message, images });
+      reply = await callOpenAI({ apiKey, model: realModel, systemPrompt, history, message, images });
     } else if (provider === "gemini") {
       if (!apiKey && !googleAccessToken) {
         return json({ error: "제미나이 API 키를 설정에 넣거나, 구글 로그인을 해달라능!" }, { status: 400 });
       }
-      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model, systemPrompt, history, message, images });
+      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model: realModel, systemPrompt, history, message, images });
     } else {
       return json({ error: "알 수 없는 provider다능" }, { status: 400 });
     }

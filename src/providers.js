@@ -147,7 +147,7 @@ const WORKERS_AI_FALLBACK_MODELS = [
   "@cf/meta/llama-3-8b-instruct",
 ];
 
-export async function callCloudflareAI({ env, systemPrompt, history, message }) {
+export async function callCloudflareAI({ env, model, systemPrompt, history, message }) {
   if (!env.AI) throw new Error("Cloudflare Workers AI 바인딩(AI)이 설정되어 있지 않다능!");
   const messages = [
     { role: "system", content: systemPrompt },
@@ -155,9 +155,9 @@ export async function callCloudflareAI({ env, systemPrompt, history, message }) 
     { role: "user", content: message },
   ];
 
-  const candidates = env.WORKERS_AI_MODEL
-    ? [env.WORKERS_AI_MODEL, ...WORKERS_AI_FALLBACK_MODELS]
-    : WORKERS_AI_FALLBACK_MODELS;
+  const candidates = [model, env.WORKERS_AI_MODEL, ...WORKERS_AI_FALLBACK_MODELS].filter(
+    (m, i, arr) => m && arr.indexOf(m) === i
+  );
 
   let lastErr;
   for (const modelId of candidates) {
