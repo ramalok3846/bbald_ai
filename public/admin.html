@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
+<script>/* /bbald_ai/admin.html 이든 /bbald_ai/admin/ 이든 상대경로(style.css 등)가 같은 폴더 기준이 되게 */document.write('<base href="'+location.pathname.replace(/[^/]*\/?$/,"")+'">');</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>빨드 AI 관리자</title>
 <meta name="robots" content="noindex, nofollow" />
@@ -11,7 +12,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=18" />
+<link rel="stylesheet" href="style.css?v=19" />
 <style>
   body { background: var(--bg-deep); }
   .admin-wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
@@ -130,10 +131,10 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="firebase-config.js?v=18"></script>
+<script src="firebase-config.js?v=19"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=18"></script>
-<script type="module" src="admin.js?v=18"></script>
+<script type="module" src="auth.js?v=19"></script>
+<script type="module" src="admin.js?v=19"></script>
 </body>
 </html>

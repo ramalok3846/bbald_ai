@@ -269,7 +269,7 @@ async function handleChatInner(request, env) {
             ? "오오 사진이 여러 장이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 다 이쁘다능! 🦕🖼️"
             : "오오 사진이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
       } else if (provider === "builtin") {
-        reply = builtinReply(message);
+        reply = builtinReply(message, { history });
       } else {
         reply = await callCloudflareAI({
           env,
@@ -534,45 +534,32 @@ export default {
     }
 
     if (env.ASSETS) {
-      const assetRes = await env.ASSETS.fetch(request);
-      // 정적 파일(특히 html/js/css)은 프록시(예: ramalok.kr/bbald_ai)나 중간 CDN
-      // 캐시에 옛날 버전·옛날 404가 계속 남아있는 문제가 있었다 (admin.html을 새로
-      // 추가했는데도 예전에 그 경로가 없었을 때의 404 응답이 캐시되어 남아있던 사례
-      // 포함). 그래서 정적 자산 전체에 캐시를 짧게 강제한다.
+      // Cloudflare Assets는 "/admin.html" -> "/admin", "/admin/" -> "/admin" 같은 3xx
+      // 리다이렉트를 돌려준다. 이 Worker는 PaLhomepage(Vercel)가 "/bbald_ai/" 접두사를 뗀
+      // 주소로 호출하기 때문에 그 Location이 접두사 없이 나가고, 접두사를 다시 붙여
+      // 돌려줘도 메인 사이트 미들웨어가 "/bbald_ai/admin"에 슬래시를 붙여 308로 되돌리고
+      // Assets가 다시 슬래시를 떼는 식으로 서로 무한 리다이렉트(ERR_TOO_MANY_REDIRECTS)가 났다.
+      // → 리다이렉트를 브라우저로 보내지 않고 여기서 직접 따라가서 최종 200 응답을 돌려준다.
+      // (브라우저 주소는 그대로 /bbald_ai/admin.html 이고, 리다이렉트가 없으니 순환도 없다.)
+      let assetReq = request;
+      let assetRes = await env.ASSETS.fetch(assetReq);
+      for (let hop = 0; hop < 5 && assetRes.status >= 300 && assetRes.status < 400; hop++) {
+        const loc = assetRes.headers.get("Location");
+        if (!loc) break;
+        let next;
+        try {
+          next = new URL(loc, url);
+        } catch {
+          break;
+        }
+        if (next.origin !== url.origin) break; // 다른 사이트로 가는 리다이렉트는 그대로 둔다
+        assetReq = new Request(next.toString(), request);
+        assetRes = await env.ASSETS.fetch(assetReq);
+      }
+      // 정적 파일(특히 html/js/css)은 프록시나 중간 CDN 캐시에 옛날 버전·옛날 404가
+      // 남는 문제가 있었어서 캐시를 짧게 강제한다.
       const headers = new Headers(assetRes.headers);
       headers.set("Cache-Control", "no-cache, must-revalidate");
-
-      // "관리자 페이지가 안 열리는" 문제의 진짜 원인: PaLhomepage(Vercel)의
-      // "/bbald_ai/(.*)" 리라이트가 "/bbald_ai/" 접두사를 뗀 채로 이 Worker에
-      // 넘겨준다(예: "/bbald_ai/admin.html" 요청이 이 Worker에는 그냥
-      // "/admin.html"로 들어옴). 그런데 Cloudflare Assets는 .html 확장자가 붙은
-      // 요청을 확장자 없는 주소로 308 리다이렉트하는 기본 동작(html_handling)이
-      // 있어서, 이 Worker가 "/admin" 같은 접두사 없는 Location을 돌려주게 된다.
-      // 그 응답이 프록시를 그대로 통과해 브라우저로 가면, 브라우저는 지금 보고
-      // 있는 주소(ramalok.kr/bbald_ai/...)가 아니라 ramalok.kr "루트" 기준으로
-      // 그 Location을 풀어버려서 엉뚱하게 ramalok.kr/admin 으로 이동하고, 그
-      // 주소는 메인 사이트 화이트리스트(middleware.js)에 없어서 404로 막힌다.
-      // → 여기서 Location에 "/bbald_ai" 접두사를 다시 붙여 돌려주면, 브라우저가
-      // 항상 올바르게 ramalok.kr/bbald_ai/... 로 리다이렉트되어 화이트리스트를
-      // 그대로 통과한다. (html_handling을 "none"으로 꺼서 리다이렉트 자체를
-      // 막는 방법은 "/" → index.html 자동 연결까지 같이 꺼버려서 사이트 전체가
-      // 404 나는 더 큰 문제를 만들었던 적이 있다 — 그래서 끄지 않고, 대신 여기서
-      // Location만 교정한다.)
-      if (assetRes.status >= 300 && assetRes.status < 400) {
-        const loc = headers.get("Location");
-        if (loc) {
-          try {
-            const locUrl = new URL(loc, url);
-            if (locUrl.origin === url.origin && !locUrl.pathname.startsWith("/bbald_ai")) {
-              locUrl.pathname = "/bbald_ai" + locUrl.pathname;
-              headers.set("Location", locUrl.pathname + locUrl.search + locUrl.hash);
-            }
-          } catch {
-            // Location이 이상한 형식이면 손대지 않고 그대로 통과시킨다.
-          }
-        }
-      }
-
       return new Response(assetRes.body, { status: assetRes.status, headers });
     }
 

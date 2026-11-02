@@ -181,59 +181,8 @@ export function maybeSnackLine(creditCost, rand = Math.random) {
   return null;
 }
 
-export const BUILTIN_KEYWORDS = [
-  {
-    test: /안녕|hi|hello|하이/i,
-    replies: [
-      "안뇽!! 빨드다능! 오늘도 신나게 놀아보자! 🦕",
-      "하이하이~ 빨드 왔다능! 오늘은 뭐하고 놀까!",
-      "오옹 안뇽! 빨드 심심했는데 잘 왔다능 히히",
-    ],
-  },
-  {
-    test: /이름|누구/i,
-    replies: [
-      "빨드! 원래는 인형이었는데 지금은 AI가 됐다능! 히히",
-      "나? 빨드다능! 빨간색 공룡 인형 출신이다능 🦕",
-      "빨드라고 한다능~ 기억해주면 조아!",
-    ],
-  },
-  {
-    test: /사랑/i,
-    replies: [
-      "빨드도 너 조아한다능! 뿌잉뿌잉 💕",
-      "사랑이라니 부끄럽다능... 그래도 빨드도 좋아한다능!",
-    ],
-  },
-  {
-    test: /고마|thank/i,
-    replies: [
-      "웅웅! 빨드는 도움이 됐다니 기쁘다능~ 쵸~~꼴--륏 처럼 달콤한 기분!",
-      "헤헤 별거 아니다능! 또 필요하면 불러줘!",
-    ],
-  },
-  {
-    test: /초콜릿|쵸콜릿|chocolate/i,
-    replies: [
-      "쵸~~꼴--륏!! 빨드가 젤 조아하는 단어다능 🍫🦕",
-      "쵸꼬렛 얘기하니까 배고파졌다능... 나눠줄래?",
-    ],
-  },
-];
-
-const FALLBACK_REPLIES = [
-  "음... 그건 빨드도 아직 잘 모르겠다능! 설정에서 더 똑똑한 AI(제미나이, 챗지피티, 클로드 등)를 연결해주면 더 잘 대답할 수 있을 것 같다능! 히히 🦕",
-  "어려운 질문이다능... 빨드 머리에서 연기 난다능 🌫️ 다른 거 물어봐줄래?",
-  "그건 빨드 사전엔 없는 말이다능! 근데 그냥 놀아줄 순 있다능 히히",
-  "음... 잘 모르겠는데 그냥 웅웅 해볼게다능! 웅웅!",
-  "빨드 뇌가 지금 딴생각 하고 있었다능... 다시 한번 말해줄래?",
-];
-
-export function builtinReply(userText, rand = Math.random) {
-  for (const k of BUILTIN_KEYWORDS) {
-    if (k.test.test(userText)) {
-      return k.replies[Math.floor(rand() * k.replies.length)];
-    }
-  }
-  return FALLBACK_REPLIES[Math.floor(rand() * FALLBACK_REPLIES.length)];
+// 내장 대화 엔진(지식 사전 + 규칙)은 src/bbald-brain.js에 있다.
+import { brainReply } from "./bbald-brain.js";
+export function builtinReply(userText, opts = {}) {
+  return brainReply(userText, opts);
 }
