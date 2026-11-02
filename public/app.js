@@ -54,14 +54,14 @@
   const attachUrlBtn = document.getElementById("attachUrlBtn");
   const fileInput = document.getElementById("fileInput");
   const attachPreview = document.getElementById("attachPreview");
-  const attachThumb = document.getElementById("attachThumb");
-  const attachRemove = document.getElementById("attachRemove");
+  const lightbox = document.getElementById("lightbox");
+  const lightboxImg = document.getElementById("lightboxImg");
+  const lightboxClose = document.getElementById("lightboxClose");
 
   const accountAvatar = document.getElementById("accountAvatar");
   const accountName = document.getElementById("accountName");
   const accountSub = document.getElementById("accountSub");
   const authBtn = document.getElementById("authBtn");
-  const profilePicUrlInput = document.getElementById("profilePicUrl");
   const newEmailInput = document.getElementById("newEmail");
   const newPasswordInput = document.getElementById("newPassword");
   const changePwBtn = document.getElementById("changePwBtn");
@@ -141,7 +141,7 @@
       const raw = localStorage.getItem(LS_KEY);
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { keys: {}, profilePic: "" };
+    return { keys: {} };
   }
   function saveState() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
@@ -149,10 +149,9 @@
 
   const state = loadState();
   state.keys = state.keys || {};
-  state.profilePic = state.profilePic || "";
   let creditsCap = 100;
 
-  let pendingAttachment = null; // { dataUrl, mimeType }
+  let pendingAttachments = []; // [{ dataUrl, mimeType }] — 이미지 여러 장 첨부
   let currentUser = null;
   let currentIdToken = null;
 
@@ -194,7 +193,11 @@
   async function syncCreditsFromServer() {
     try {
       const uid = currentUser?.uid || "";
-      const res = await fetch(`api/credits${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
+      const idToken = uid ? await getFreshIdToken() : null;
+      const res = await fetch(
+        `api/credits${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`,
+        idToken ? { headers: { "x-user-token": idToken } } : undefined
+      );
       if (res.ok) {
         const data = await res.json();
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
@@ -210,7 +213,11 @@
     usageDetailList.innerHTML = `<p class="hint">불러오는 중...</p>`;
     try {
       const uid = currentUser?.uid || "";
-      const res = await fetch(`api/usage${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
+      const idToken = uid ? await getFreshIdToken() : null;
+      const res = await fetch(
+        `api/usage${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`,
+        idToken ? { headers: { "x-user-token": idToken } } : undefined
+      );
       if (!res.ok) throw new Error("응답 실패");
       const data = await res.json();
       renderCredits(data.credits, data.cap);
@@ -253,11 +260,17 @@
     const { ok, data } = await billingFetch("status");
     if (!ok) { planStatus.textContent = "요금제 정보를 못 불러왔다능..."; return; }
     renderCredits(data.credits, data.cap);
-    planStatus.textContent =
-      data.plan?.tier === "pro"
-        ? `요금제: ⭐ PRO (${new Date(data.plan.expiresAt).toLocaleDateString("ko-KR")}까지)`
-        : "요금제: 무료";
-    if (subscribeProBtn) subscribeProBtn.disabled = data.plan?.tier === "pro";
+    const isPro = data.plan?.tier === "pro";
+    if (!isPro) {
+      planStatus.textContent = "요금제: 무료";
+    } else if (data.plan.source === "pal_canva") {
+      planStatus.textContent = "요금제: ⭐ PRO (PAL Design PRO 구독으로 통합 적용됨)";
+    } else if (data.plan.expiresAt) {
+      planStatus.textContent = `요금제: ⭐ PRO (${new Date(data.plan.expiresAt).toLocaleDateString("ko-KR")}까지)`;
+    } else {
+      planStatus.textContent = "요금제: ⭐ PRO";
+    }
+    if (subscribeProBtn) subscribeProBtn.disabled = isPro;
   }
   subscribeProBtn?.addEventListener("click", async () => {
     subscribeProBtn.disabled = true;
@@ -301,16 +314,16 @@
   });
 
   renderCredits(100, 100);
-  profilePicUrlInput.value = state.profilePic;
   document.getElementById("key-anthropic").value = state.keys.anthropic || "";
   document.getElementById("key-openai").value = state.keys.openai || "";
   document.getElementById("key-gemini").value = state.keys.gemini || "";
 
   // ---------------- 계정 / 프로필 ----------------
+  // 프로필 사진은 PAL 통합 회원 계정의 사진(currentUser.photoURL)을 그대로
+  // 쓴다 — 구글 사진이든, PAL 계정 설정에서 바꾼 사진이든 전부 Firebase Auth의
+  // photoURL 하나로 합쳐지므로 빨드 AI가 따로 저장/override할 필요가 없다.
   function renderAccount() {
-    const customPic = state.profilePic.trim();
-    const googlePic = currentUser?.photoURL;
-    const picUrl = customPic || googlePic;
+    const picUrl = currentUser?.photoURL;
 
     accountAvatar.innerHTML = "";
     if (picUrl) {
@@ -365,10 +378,11 @@
   async function grantSignupBonusIfNeeded(user) {
     if (!user) return;
     try {
+      const idToken = await getFreshIdToken();
       const res = await fetch("api/bonus", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "signup", uid: user.uid }),
+        body: JSON.stringify({ type: "signup", uid: user.uid, idToken }),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -552,11 +566,6 @@
     }
   });
 
-  profilePicUrlInput.addEventListener("change", () => {
-    state.profilePic = profilePicUrlInput.value.trim();
-    saveState();
-    renderAccount();
-  });
 
   changePwBtn.addEventListener("click", async () => {
     if (!window.bbaldAuth) return;
@@ -669,9 +678,7 @@
     if (role === "user") {
       const av = document.createElement("div");
       av.className = "avatar user-avatar";
-      const customPic = state.profilePic.trim();
-      const googlePic = currentUser?.photoURL;
-      const picUrl = customPic || googlePic;
+      const picUrl = currentUser?.photoURL;
       if (picUrl) {
         const img = document.createElement("img");
         img.src = picUrl;
@@ -692,12 +699,17 @@
     const bubble = document.createElement("div");
     bubble.className = "bubble";
 
-    if (opts.imageDataUrl) {
-      const img = document.createElement("img");
-      img.className = "bubble-image";
-      img.src = opts.imageDataUrl;
-      img.alt = "첨부 이미지";
-      bubble.appendChild(img);
+    if (opts.images && opts.images.length) {
+      const gallery = document.createElement("div");
+      gallery.className = "bubble-gallery";
+      opts.images.forEach((src, i) => {
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = `첨부 이미지 ${i + 1}`;
+        img.addEventListener("click", () => openLightbox(src));
+        gallery.appendChild(img);
+      });
+      bubble.appendChild(gallery);
     }
     if (text) {
       const p = document.createElement("div");
@@ -772,16 +784,38 @@
   }
   input.addEventListener("input", autoResize);
 
-  // ---------------- 첨부 이미지 (업로드 / URL / 붙여넣기) — 게스트는 로그인해야 쓸 수 있다 ----------------
-  function setAttachment(dataUrl, mimeType) {
-    pendingAttachment = { dataUrl, mimeType };
-    attachThumb.src = dataUrl;
-    attachPreview.hidden = false;
+  // ---------------- 첨부 이미지 (파일/URL 여러 장, 미리보기, 클릭해서 확대) — 게스트는 로그인해야 쓸 수 있다 ----------------
+  // 나중에 이미지 말고 다른 멀티미디어(영상/오디오 등)도 넣을 수 있게 확장할
+  // 걸 생각해서 pendingAttachments를 배열로 둔다 — 지금은 이미지만 지원.
+  function renderAttachPreview() {
+    attachPreview.innerHTML = "";
+    attachPreview.hidden = pendingAttachments.length === 0;
+    pendingAttachments.forEach((att, idx) => {
+      const item = document.createElement("div");
+      item.className = "attach-preview-item";
+      const img = document.createElement("img");
+      img.src = att.dataUrl;
+      img.alt = `첨부 이미지 ${idx + 1}`;
+      img.addEventListener("click", () => openLightbox(att.dataUrl));
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "attach-remove";
+      removeBtn.textContent = "✕";
+      removeBtn.addEventListener("click", () => {
+        pendingAttachments.splice(idx, 1);
+        renderAttachPreview();
+      });
+      item.append(img, removeBtn);
+      attachPreview.appendChild(item);
+    });
   }
-  function clearAttachment() {
-    pendingAttachment = null;
-    attachThumb.src = "";
-    attachPreview.hidden = true;
+  function addAttachment(dataUrl, mimeType) {
+    pendingAttachments.push({ dataUrl, mimeType });
+    renderAttachPreview();
+  }
+  function clearAttachments() {
+    pendingAttachments = [];
+    renderAttachPreview();
   }
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -808,73 +842,74 @@
     return false;
   }
 
+  // ---------------- 이미지 확대(라이트박스) ----------------
+  function openLightbox(src) {
+    lightboxImg.src = src;
+    lightbox.hidden = false;
+  }
+  function closeLightbox() {
+    lightbox.hidden = true;
+    lightboxImg.src = "";
+  }
+  lightboxClose?.addEventListener("click", closeLightbox);
+  lightbox?.addEventListener("click", (e) => { if (e.target === lightbox) closeLightbox(); });
+
   attachBtn.addEventListener("click", () => {
     if (!requireLoginForImages()) return;
     fileInput.click();
   });
   fileInput.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    const dataUrl = await fileToDataUrl(file);
-    setAttachment(dataUrl, file.type);
+    const files = Array.from(fileInput.files || []);
+    for (const file of files) {
+      const dataUrl = await fileToDataUrl(file);
+      addAttachment(dataUrl, file.type);
+    }
     fileInput.value = "";
   });
   attachUrlBtn.addEventListener("click", async () => {
     if (!requireLoginForImages()) return;
-    const url = prompt("이미지 URL을 붙여넣어줘바!");
-    if (!url) return;
-    try {
-      const dataUrl = await urlToDataUrl(url);
-      setAttachment(dataUrl, "image/*");
-    } catch {
-      alert("이미지를 못 가져왔다능... URL을 확인해줘!");
-    }
-  });
-  attachRemove.addEventListener("click", clearAttachment);
-
-  input.addEventListener("paste", async (e) => {
-    const items = e.clipboardData?.items || [];
-    for (const item of items) {
-      if (item.type.startsWith("image/")) {
-        if (!currentUser) { e.preventDefault(); requireLoginForImages(); break; }
-        const file = item.getAsFile();
-        if (file) {
-          const dataUrl = await fileToDataUrl(file);
-          setAttachment(dataUrl, file.type);
-        }
-        e.preventDefault();
-        break;
+    const raw = prompt("이미지 URL을 붙여넣어줘바! (여러 개는 줄바꿈으로 구분)");
+    if (!raw) return;
+    const urls = raw.split(/\n+/).map((u) => u.trim()).filter(Boolean);
+    for (const url of urls) {
+      try {
+        const dataUrl = await urlToDataUrl(url);
+        addAttachment(dataUrl, "image/*");
+      } catch {
+        addMessage("assistant", `이미지를 못 가져왔다능... (${url})`, { extraClass: "error" });
       }
     }
   });
 
-  // ---------------- 대화 전송 ----------------
-  composer.addEventListener("submit", async (e) => {
+  input.addEventListener("paste", async (e) => {
+    const items = Array.from(e.clipboardData?.items || []).filter((it) => it.type.startsWith("image/"));
+    if (!items.length) return;
+    if (!currentUser) { e.preventDefault(); requireLoginForImages(); return; }
     e.preventDefault();
-    const text = input.value.trim();
-    if (!text && !pendingAttachment) return;
+    for (const item of items) {
+      const file = item.getAsFile();
+      if (file) {
+        const dataUrl = await fileToDataUrl(file);
+        addAttachment(dataUrl, file.type);
+      }
+    }
+  });
 
-    const provider = providerSelect.value;
-    const model = modelSelect.value;
-    const apiKey = state.keys[provider] || "";
-    const attachment = pendingAttachment;
+  // ---------------- 대화 전송 (여러 메시지를 연달아 보내도 순서대로 처리되는
+  // 대기열 — 빨드가 "먹는 시간"으로 오래 걸려도 그동안 계속 말을 걸 수 있다) ----------------
+  let isSending = false;
+  const sendQueue = [];
 
-    addMessage("user", text, { imageDataUrl: attachment?.dataUrl });
-    currentMessages.push({ role: "user", content: text || "(이미지 첨부)" });
-    input.value = "";
-    clearAttachment();
-    autoResize();
-    sendBtn.disabled = true;
+  async function sendOne(job) {
+    const { text, attachments, provider, model, apiKey } = job;
+    const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
 
-    // 10번 중 6번은 빨드가 "먹는 시간"(영양 떨어짐/초콜릿 먹는 중 등)을 가지며
-    // 10초~1분 사이 랜덤으로 오래 기다리고, 나머지 4번은 짧게 생각만 하고 바로
-    // 응답한다 — 실제 응답이 더 빨리 와도 먹는 시간일 땐 최소 그 시간만큼 기다림.
     const isEatingTime = Math.random() < 0.6;
     addLoadingBubble(isEatingTime);
     const eatingTimeMs = isEatingTime ? 10000 + Math.random() * 50000 : 0;
     const eatingTimer = eatingTimeMs ? new Promise((resolve) => setTimeout(resolve, eatingTimeMs)) : Promise.resolve();
-    const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
 
+    const idToken = currentUser ? await getFreshIdToken() : null;
     let res;
     try {
       const [fetchRes] = await Promise.all([
@@ -888,8 +923,9 @@
             model,
             apiKey,
             uid: currentUser?.uid || null,
-            image: attachment ? { dataUrl: attachment.dataUrl, mimeType: attachment.mimeType } : null,
+            images: attachments.map((a) => ({ dataUrl: a.dataUrl, mimeType: a.mimeType })),
             googleAccessToken: useGoogleGemini ? googleGeminiAccessToken : null,
+            idToken,
           }),
         }),
         eatingTimer,
@@ -905,7 +941,6 @@
           : `빨드한테 요청이 안 갔다능... (${err.message || "네트워크 오류"})`,
         { extraClass: "error" }
       );
-      sendBtn.disabled = false;
       return;
     }
 
@@ -938,13 +973,45 @@
         `빨드 응답을 이해 못했다능... (서버가 이상한 응답을 줬다능, status ${res.status})`,
         { extraClass: "error" }
       );
-    } finally {
-      sendBtn.disabled = false;
     }
+  }
+
+  async function processQueue() {
+    if (isSending) return;
+    const job = sendQueue.shift();
+    if (!job) return;
+    isSending = true;
+    try {
+      await sendOne(job);
+    } finally {
+      isSending = false;
+      processQueue();
+    }
+  }
+
+  composer.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text && !pendingAttachments.length) return;
+
+    const provider = providerSelect.value;
+    const model = modelSelect.value;
+    const apiKey = state.keys[provider] || "";
+    const attachments = pendingAttachments;
+
+    addMessage("user", text, { images: attachments.map((a) => a.dataUrl) });
+    currentMessages.push({ role: "user", content: text || "(이미지 첨부)" });
+    input.value = "";
+    clearAttachments();
+    autoResize();
+
+    sendQueue.push({ text, attachments, provider, model, apiKey });
+    processQueue();
   });
 
+  // 엔터는 줄바꿈(기본 textarea 동작 그대로 둠), Ctrl+Enter(맥은 Cmd+Enter)로 전송.
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       composer.requestSubmit();
     }
@@ -1066,10 +1133,11 @@
       clearTimeout(hideTimer);
       stickerBtn.hidden = true;
       try {
+        const idToken = currentUser ? await getFreshIdToken() : null;
         const res = await fetch("api/bonus", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ type: "sticker", uid: currentUser?.uid || null }),
+          body: JSON.stringify({ type: "sticker", uid: currentUser?.uid || null, idToken }),
         });
         const data = await res.json();
         if (data.granted) {

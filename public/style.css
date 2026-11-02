@@ -419,6 +419,7 @@ html, body { height: 100%; }
 .chat {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -499,6 +500,12 @@ html, body { height: 100%; }
   font-size: 0.95rem;
   box-shadow: var(--shadow-card);
   white-space: pre-wrap;
+  /* 긴 URL/코드처럼 공백 없는 긴 글자는 word-break가 없으면 안 줄어들고
+     화면 오른쪽 밖으로 삐져나간다("화면 우측이 잘림") — 특히 flex 안에서는
+     min-width도 auto가 기본이라 같이 막아줘야 한다. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .msg.assistant .bubble {
   background: var(--surface);
@@ -546,15 +553,23 @@ html, body { height: 100%; }
   align-items: flex-end;
 }
 .attach-preview {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.attach-preview-item {
   position: relative;
   width: 72px;
+  height: 72px;
+  flex-shrink: 0;
 }
-.attach-preview img {
+.attach-preview-item img {
   width: 72px;
   height: 72px;
   object-fit: cover;
   border-radius: 10px;
   border: 1px solid var(--border);
+  cursor: pointer;
 }
 .attach-remove {
   position: absolute;
@@ -593,15 +608,71 @@ html, body { height: 100%; }
 }
 .input:focus { outline: none; border-color: var(--purple); }
 .send-btn {
-  padding: 0 22px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 50%;
   background: linear-gradient(90deg, var(--pink-deep), var(--purple-deep));
   color: #fff;
-  font-weight: 700;
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+.send-btn svg { width: 20px; height: 20px; }
+.send-btn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- 이미지 확대(라이트박스) ---------- */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 6, 20, 0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+  cursor: zoom-out;
+}
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  cursor: default;
+}
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 1rem;
   cursor: pointer;
 }
-.send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- 메시지에 붙은 이미지 여러 장 ---------- */
+.bubble-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.bubble-gallery img {
+  max-width: min(200px, 55vw);
+  max-height: min(200px, 55vw);
+  border-radius: 10px;
+  cursor: zoom-in;
+  object-fit: cover;
+}
 
 /* ---------- Modal ---------- */
 .modal-backdrop {

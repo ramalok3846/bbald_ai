@@ -11,6 +11,26 @@ const PRO_CAP_MULTIPLIER = 3; // PRO면 크레딧 최대치가 3배
 const PRO_DAILY_MULTIPLIER = 2; // PRO면 하루 제한도 2배
 const PRO_PLAN_DAYS = 30;
 
+// "통합회원 요금제에서 크레딧을 가져와라" — PAL Design(pal-canva)의 PRO 구독은
+// PAL 전체 계정에 걸친 혜택으로 취급한다. pal_canva/billing/{uid}를 pal-canva와
+// 똑같은 방식으로 읽어서(pal-canva/assets/js/billing.js의 statusOf와 동일 로직),
+// 거기서 PRO면 bbald_ai에서도 로그인 없이(따로 안 사야) PRO로 인정해준다.
+import { RTDB_BASE } from "./firebase-verify.js";
+
+async function checkPalCanvaPro(uid, idToken) {
+  if (!uid || !idToken) return false;
+  try {
+    const res = await fetch(`${RTDB_BASE}/pal_canva/billing/${uid}.json?auth=${encodeURIComponent(idToken)}`);
+    if (!res.ok) return false;
+    const b = await res.json();
+    if (!b) return false;
+    const now = Date.now();
+    return !!b.autoRenew || (b.proUntil || 0) > now;
+  } catch {
+    return false;
+  }
+}
+
 export const CREDIT_PACKS = {
   small: { amount: 50, priceLabel: "₩1,100 (테스트)" },
   medium: { amount: 150, priceLabel: "₩2,900 (테스트)" },
@@ -46,19 +66,28 @@ export function isTestCardValid(card) {
   return number === "0000000000000000" && exp === "00/00" && cvc === "000";
 }
 
-export async function getPlan(env, identity) {
-  if (!env.RATE_LIMIT_KV) return { tier: "free" };
-  const raw = await env.RATE_LIMIT_KV.get(planKey(identity));
-  if (!raw) return { tier: "free" };
-  try {
-    const plan = JSON.parse(raw);
-    if (plan.tier === "pro" && plan.expiresAt && plan.expiresAt < Date.now()) {
-      return { tier: "free", expired: true };
+// idToken이 있으면(로그인된 사용자가 자기 토큰을 같이 보낸 경우) PAL Design의
+// PRO 구독도 같이 확인해서, 둘 중 하나라도 PRO면 PRO로 인정한다.
+export async function getPlan(env, identity, idToken) {
+  let own = { tier: "free" };
+  if (env.RATE_LIMIT_KV) {
+    const raw = await env.RATE_LIMIT_KV.get(planKey(identity));
+    if (raw) {
+      try {
+        const plan = JSON.parse(raw);
+        if (!(plan.tier === "pro" && plan.expiresAt && plan.expiresAt < Date.now())) {
+          own = plan;
+        }
+      } catch {}
     }
-    return plan;
-  } catch {
-    return { tier: "free" };
   }
+  if (own.tier === "pro") return own;
+
+  const uid = identity.startsWith("uid:") ? identity.slice(4) : null;
+  if (uid && (await checkPalCanvaPro(uid, idToken))) {
+    return { tier: "pro", source: "pal_canva" };
+  }
+  return own;
 }
 
 export async function setPlan(env, identity, tier, days = PRO_PLAN_DAYS) {

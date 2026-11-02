@@ -16,20 +16,20 @@ function mimeFromDataUrl(dataUrl, fallback) {
   return m ? m[1] : fallback;
 }
 
-export async function callAnthropic({ apiKey, model, systemPrompt, history, message, image }) {
+export async function callAnthropic({ apiKey, model, systemPrompt, history, message, images }) {
   const modelId = CLAUDE_MODELS[model] || CLAUDE_MODELS["sonnet-5"];
   let userContent = message;
-  if (image?.dataUrl) {
+  if (images?.length) {
     userContent = [
-      { type: "text", text: message || "이 사진 좀 봐줘!" },
-      {
+      { type: "text", text: message || "이 사진들 좀 봐줘!" },
+      ...images.map((img) => ({
         type: "image",
         source: {
           type: "base64",
-          media_type: mimeFromDataUrl(image.dataUrl, image.mimeType || "image/png"),
-          data: dataUrlToBase64(image.dataUrl),
+          media_type: mimeFromDataUrl(img.dataUrl, img.mimeType || "image/png"),
+          data: dataUrlToBase64(img.dataUrl),
         },
-      },
+      })),
     ];
   }
   const messages = [
@@ -55,13 +55,13 @@ export async function callAnthropic({ apiKey, model, systemPrompt, history, mess
   return data.content?.[0]?.text ?? "";
 }
 
-export async function callOpenAI({ apiKey, model, systemPrompt, history, message, image }) {
+export async function callOpenAI({ apiKey, model, systemPrompt, history, message, images }) {
   const modelId = model || "gpt-4o-mini";
   let userContent = message;
-  if (image?.dataUrl) {
+  if (images?.length) {
     userContent = [
-      { type: "text", text: message || "이 사진 좀 봐줘!" },
-      { type: "image_url", image_url: { url: image.dataUrl } },
+      { type: "text", text: message || "이 사진들 좀 봐줘!" },
+      ...images.map((img) => ({ type: "image_url", image_url: { url: img.dataUrl } })),
     ];
   }
   const messages = [
@@ -89,13 +89,13 @@ const GEMINI_FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-
 // accessToken이 있으면(구글 로그인 시 받은 OAuth 액세스 토큰, Generative Language
 // API 권한 스코프 포함) API 키 입력 없이 그 구글 계정 자체의 크레딧/권한으로 호출한다.
 // accessToken이 없으면 기존처럼 사용자가 넣은 API 키(?key=)를 쓴다.
-export async function callGemini({ apiKey, accessToken, model, systemPrompt, history, message, image }) {
-  const userParts = [{ text: message || "이 사진 좀 봐줘!" }];
-  if (image?.dataUrl) {
+export async function callGemini({ apiKey, accessToken, model, systemPrompt, history, message, images }) {
+  const userParts = [{ text: message || "이 사진들 좀 봐줘!" }];
+  for (const img of images || []) {
     userParts.push({
       inlineData: {
-        mimeType: mimeFromDataUrl(image.dataUrl, image.mimeType || "image/png"),
-        data: dataUrlToBase64(image.dataUrl),
+        mimeType: mimeFromDataUrl(img.dataUrl, img.mimeType || "image/png"),
+        data: dataUrlToBase64(img.dataUrl),
       },
     });
   }

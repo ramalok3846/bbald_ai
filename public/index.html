@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=13" />
+<link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
 <div class="app">
@@ -107,16 +107,18 @@
     </section>
 
     <form class="composer" id="composer">
-      <div class="attach-preview" id="attachPreview" hidden>
-        <img id="attachThumb" alt="첨부 이미지 미리보기" />
-        <button type="button" id="attachRemove" class="attach-remove">✕</button>
-      </div>
+      <div class="attach-preview" id="attachPreview" hidden></div>
       <div class="composer-row">
-        <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부">📎</button>
+        <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부 (여러 개 가능)">📎</button>
         <button type="button" id="attachUrlBtn" class="icon-btn" title="이미지 URL로 첨부">🔗</button>
-        <input type="file" id="fileInput" accept="image/*" hidden />
-        <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?) · 이미지 붙여넣기(Ctrl+V)도 가능" rows="1"></textarea>
-        <button type="submit" class="send-btn" id="sendBtn">전송</button>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?) · 이미지 붙여넣기(Ctrl+V), 엔터는 줄바꿈, Ctrl+Enter로 전송" rows="1"></textarea>
+        <button type="submit" class="send-btn" id="sendBtn" title="전송 (Ctrl+Enter)" aria-label="전송">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+        </button>
       </div>
     </form>
   </main>
@@ -129,10 +131,7 @@
       <button class="modal-close" id="closeSettings">✕</button>
     </div>
     <div class="modal-body">
-      <label class="field">
-        <span>프로필 사진 URL</span>
-        <input type="text" id="profilePicUrl" placeholder="https://... 또는 비워두면 USER 아이콘" />
-      </label>
+      <p class="hint">프로필 사진은 PAL 통합 계정 사진을 그대로 쓴다능 (로그인한 계정에서 바꾸면 여기도 같이 바뀜).</p>
 
       <label class="field">
         <span>Claude API 키</span>
@@ -166,7 +165,7 @@
       <div class="divider"></div>
 
       <div id="billingSection" hidden>
-        <p class="hint"><strong>요금제 / 크레딧 충전</strong> — ⚠️ 전부 테스트 모드다능. 실제 결제는 없고, 아래 테스트 카드로만 "결제"가 통과한다 (카드번호 0000-0000-0000-0000 · 유효기간 00/00 · CVC 000, 미리 채워둠).</p>
+        <p class="hint"><strong>요금제 / 크레딧 충전</strong> — ⚠️ 전부 테스트 모드다능. 실제 결제는 없고, 아래 테스트 카드로만 "결제"가 통과한다 (카드번호 0000-0000-0000-0000 · 유효기간 00/00 · CVC 000, 미리 채워둠). PAL Design(PAL 캔바)에서 이미 PRO 구독 중이면 여기서도 자동으로 PRO로 인정된다능!</p>
         <p class="hint" id="planStatus">요금제: 무료</p>
 
         <div class="field">
@@ -247,16 +246,21 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=13"></script>
+<div class="lightbox" id="lightbox" hidden>
+  <button type="button" class="lightbox-close" id="lightboxClose" aria-label="닫기">✕</button>
+  <img id="lightboxImg" alt="확대된 이미지" />
+</div>
+
+<script src="firebase-config.js?v=14"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=13"></script>
+<script type="module" src="auth.js?v=14"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

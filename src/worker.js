@@ -40,13 +40,17 @@ import {
 // provider 기본 비용 + 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
 // 줄어들게 해달라"는 요청 반영 — 더 똑똑한(비싼) 모델일수록 더 많이 깎는다.
 // 모델 상세 정보(실제 API 모델 id, 비용 배율, 로그인 필요 여부)는 provider별로 묶어둔다.
+// "크레딧이 떨어지는 속도가 지금보다 많이 빨라야 한다"는 요청으로 기본 비용을
+// 전반적으로 올렸다 (대략 2배). 그만큼 회원 기본 cap(100)/PRO cap(×3)이 있어야
+// 회원·PRO가 게스트보다 확실히 더 많이 쓸 수 있다.
 const BASE_COST = {
-  builtin: 2,
-  cloudflare: 2,
-  anthropic: 4,
-  openai: 5,
-  gemini: 5,
+  builtin: 3,
+  cloudflare: 4,
+  anthropic: 10,
+  openai: 12,
+  gemini: 12,
 };
+const IMAGE_COST = 3; // 이미지 한 장당 추가 비용 (여러 장이면 장당 더 깎인다)
 // 어느 AI를 고르든 같은 4단계(라이트/기본/딥씽킹/스토리)로 통일한다 —
 // provider마다 모델 개수가 다르면 헷갈리니, 비용 배율·로그인 필요 여부는
 // 전부 동일하게 두고 실제 모델 이름만 provider에 맞게 다르게 쓴다.
@@ -70,11 +74,11 @@ const MODEL_INFO = {
     "gemini-3.8-pro-creative": { mult: 2, memberOnly: true }, // 빨드 스토리
   },
 };
-function computeCost(provider, model) {
-  const base = BASE_COST[provider] ?? 4;
+function computeCost(provider, model, imageCount = 0) {
+  const base = BASE_COST[provider] ?? 8;
   // builtin/cloudflare는 모델 선택이 없으므로(단일 모델) 배율은 항상 1.
   const mult = MODEL_INFO[provider]?.[model]?.mult ?? 1;
-  return Math.max(1, Math.round(base * mult));
+  return Math.max(1, Math.round(base * mult)) + imageCount * IMAGE_COST;
 }
 function isMemberOnlyModel(provider, model) {
   return MODEL_INFO[provider]?.[model]?.memberOnly === true;
@@ -83,11 +87,11 @@ function isMemberOnlyModel(provider, model) {
 // 신원(게스트/회원)에 맞는 cap(크레딧 최대치)·하루 제한을 계산한다. 회원이면
 // 요금제(PRO)·구매/쿠폰으로 늘어난 cap_bonus까지 반영한다 — 게스트는 IP 기반
 // 신원이라 요금제에 가입할 수 없으므로 기본값만 쓴다.
-async function resolveEconomy(env, config, identity, isGuest) {
+async function resolveEconomy(env, config, identity, isGuest, idToken) {
   const baseCap = isGuest ? config.startingCreditsGuest : config.startingCredits;
   const baseDailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
   if (isGuest) return { cap: baseCap, dailyLimits: baseDailyLimits, plan: { tier: "free" }, capBonus: 0 };
-  const [plan, capBonus] = await Promise.all([getPlan(env, identity), getCapBonus(env, identity)]);
+  const [plan, capBonus] = await Promise.all([getPlan(env, identity, idToken), getCapBonus(env, identity)]);
   return {
     cap: computeEffectiveCap(baseCap, plan, capBonus),
     dailyLimits: computeEffectiveDailyLimits(baseDailyLimits, plan),
@@ -130,25 +134,29 @@ async function handleChatInner(request, env) {
     model = "sonnet-5",
     apiKey = "",
     uid = null, // Firebase 로그인 사용자면 uid, 아니면 null(게스트는 IP로 식별)
-    image = null, // { dataUrl, mimeType } | null
+    images = [], // [{ dataUrl, mimeType }] — 이미지 여러 장 첨부 가능
     // 구글 로그인 시 받은 OAuth 액세스 토큰(Generative Language API 스코프 포함).
     // 있으면 제미나이를 API 키 입력 없이 그 구글 계정 자체의 권한/크레딧으로 호출한다.
     googleAccessToken = null,
+    // 로그인한 사용자의 Firebase ID 토큰(선택). 있으면 PAL Design(pal-canva)의
+    // PRO 구독도 같이 확인해서 "통합회원 요금제"로 인정해줄 수 있다.
+    idToken = null,
   } = body;
+  const hasImages = Array.isArray(images) && images.length > 0;
 
-  if ((typeof message !== "string" || !message.trim()) && !image) {
+  if ((typeof message !== "string" || !message.trim()) && !hasImages) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
   const isGuest = !uid;
   const identity = resolveIdentity(request, uid);
   const config = await getConfig(env);
-  const economy = await resolveEconomy(env, config, identity, isGuest);
+  const economy = await resolveEconomy(env, config, identity, isGuest, idToken);
   const effectiveCap = economy.cap;
   const effectiveDailyLimits = economy.dailyLimits;
 
   const { isSmart, level, sunsetLabel } = getSmartInfo();
-  const cost = computeCost(provider, model);
+  const cost = computeCost(provider, model, hasImages ? images.length : 0);
 
   if (config.maintenance?.enabled) {
     return json(
@@ -165,7 +173,7 @@ async function handleChatInner(request, env) {
   }
 
   // 게스트 기능 제한: 이미지 첨부, 고급 모델(딥씽킹/스토리)은 로그인해야 쓸 수 있다.
-  if (isGuest && image) {
+  if (isGuest && hasImages) {
     return json({ error: "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒" }, { status: 403 });
   }
   if (isGuest && isMemberOnlyModel(provider, model)) {
@@ -191,7 +199,7 @@ async function handleChatInner(request, env) {
   }
 
   // 아주 쉬운 사칙연산은 빨드의 개그 두뇌가 직접 처리 (진짜 AI 호출 없이, 크레딧 절약!)
-  const mathOverride = !image && tryDumbMathOverride(message, level);
+  const mathOverride = !hasImages && tryDumbMathOverride(message, level);
   if (mathOverride) {
     return json({
       reply: mathOverride,
@@ -233,24 +241,34 @@ async function handleChatInner(request, env) {
   try {
     if (provider === "builtin" || provider === "cloudflare") {
       // 빨드 기본 두뇌 / Cloudflare Workers AI는 진짜 이미지 분석은 안 하고 귀엽게 반응만 한다.
-      if (image && provider === "builtin") {
-        reply = "오오 사진이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
+      if (hasImages && provider === "builtin") {
+        reply =
+          images.length > 1
+            ? "오오 사진이 여러 장이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 다 이쁘다능! 🦕🖼️"
+            : "오오 사진이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
       } else if (provider === "builtin") {
         reply = builtinReply(message);
       } else {
-        reply = await callCloudflareAI({ env, systemPrompt, history, message: image ? `${message}\n(사용자가 이미지를 첨부했지만 너는 이미지를 볼 수 없으니, 궁금해하는 티만 내며 귀엽게 반응해라)` : message });
+        reply = await callCloudflareAI({
+          env,
+          systemPrompt,
+          history,
+          message: hasImages
+            ? `${message}\n(사용자가 이미지를 ${images.length}장 첨부했지만 너는 이미지를 볼 수 없으니, 궁금해하는 티만 내며 귀엽게 반응해라)`
+            : message,
+        });
       }
     } else if (provider === "anthropic") {
       if (!apiKey) return json({ error: "클로드 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callAnthropic({ apiKey, model, systemPrompt, history, message, image });
+      reply = await callAnthropic({ apiKey, model, systemPrompt, history, message, images });
     } else if (provider === "openai") {
       if (!apiKey) return json({ error: "챗지피티 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callOpenAI({ apiKey, model, systemPrompt, history, message, image });
+      reply = await callOpenAI({ apiKey, model, systemPrompt, history, message, images });
     } else if (provider === "gemini") {
       if (!apiKey && !googleAccessToken) {
         return json({ error: "제미나이 API 키를 설정에 넣거나, 구글 로그인을 해달라능!" }, { status: 400 });
       }
-      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model, systemPrompt, history, message, image });
+      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model, systemPrompt, history, message, images });
     } else {
       return json({ error: "알 수 없는 provider다능" }, { status: 400 });
     }
@@ -399,10 +417,11 @@ async function handleConversations(request, env, url) {
 async function handleUsage(request, env, url) {
   try {
     const uid = url.searchParams.get("uid");
+    const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
     const identity = resolveIdentity(request, uid);
     const config = await getConfig(env);
     const isGuest = !uid;
-    const economy = await resolveEconomy(env, config, identity, isGuest);
+    const economy = await resolveEconomy(env, config, identity, isGuest, idToken);
     const [credits, today] = await Promise.all([
       getBalance(env, identity, economy.cap),
       getUsageSummary(env, identity, economy.dailyLimits),
@@ -425,7 +444,7 @@ async function handleBilling(request, env, url) {
     const config = await getConfig(env);
 
     if (path === "status" && request.method === "GET") {
-      const economy = await resolveEconomy(env, config, identity, false);
+      const economy = await resolveEconomy(env, config, identity, false, idToken);
       const credits = await getBalance(env, identity, economy.cap);
       return json({
         credits,
@@ -441,7 +460,7 @@ async function handleBilling(request, env, url) {
       const bodyIn = await request.json();
       const result = await purchaseCreditPack(env, identity, bodyIn.packId, bodyIn.card);
       if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false);
+      const economy = await resolveEconomy(env, config, identity, false, idToken);
       const credits = await getBalance(env, identity, economy.cap);
       return json({ ...result, credits, cap: economy.cap });
     }
@@ -450,7 +469,7 @@ async function handleBilling(request, env, url) {
       const bodyIn = await request.json();
       const result = await subscribePro(env, identity, bodyIn.card);
       if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false);
+      const economy = await resolveEconomy(env, config, identity, false, idToken);
       const credits = await getBalance(env, identity, economy.cap);
       return json({ ...result, credits, cap: economy.cap });
     }
@@ -459,7 +478,7 @@ async function handleBilling(request, env, url) {
       const bodyIn = await request.json();
       const result = await redeemCoupon(env, identity, bodyIn.code);
       if (!result.ok) return json(result, { status: 400 });
-      const economy = await resolveEconomy(env, config, identity, false);
+      const economy = await resolveEconomy(env, config, identity, false, idToken);
       const credits = await getBalance(env, identity, economy.cap);
       return json({ ...result, credits, cap: economy.cap });
     }
@@ -489,10 +508,11 @@ export default {
 
     if (apiPath === "/api/credits" && request.method === "GET") {
       const uid = url.searchParams.get("uid");
+      const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
       const identity = resolveIdentity(request, uid);
       try {
         const config = await getConfig(env);
-        const economy = await resolveEconomy(env, config, identity, !uid);
+        const economy = await resolveEconomy(env, config, identity, !uid, idToken);
         const credits = await getBalance(env, identity, economy.cap);
         return json({ credits, cap: economy.cap, plan: economy.plan });
       } catch (err) {
@@ -509,7 +529,7 @@ export default {
         const bodyIn = await request.json();
         const identity = resolveIdentity(request, bodyIn.uid);
         const config = await getConfig(env);
-        const economy = await resolveEconomy(env, config, identity, !bodyIn.uid);
+        const economy = await resolveEconomy(env, config, identity, !bodyIn.uid, bodyIn.idToken);
         const cap = economy.cap;
         if (bodyIn.type === "signup") {
           const result = await claimSignupBonus(env, identity, cap);
