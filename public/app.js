@@ -623,29 +623,31 @@
     addMessage("assistant", "안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)", { skipStore: true });
   }
 
-  // ---------------- 생각 중 표시 (클로드 데스크톱의 "대화 압축 중"처럼, 빨드식
-  // 말투 농담이 10번 중 6번 꼴로 나온다) ----------------
-  const LOADING_PHRASES_BBALD = [
+  // ---------------- 생각 중 표시 (클로드 데스크톱의 "대화 압축 중"처럼) ----------------
+  // 멘트는 전부 빨드식 말투(다능체)다. 10번 중 6번은 빨드가 "먹는 시간"(영양
+  // 떨어짐/충전중/초콜릿 먹는 중 등)을 가지면서 10초~1분 길게 기다리고, 나머지
+  // 4번은 그냥 짧게 생각하는 중이라고만 한다.
+  const LOADING_PHRASES_EATING = [
     "영양 떨어짐... 충전 중이다능 🔌",
     "초콜릿 먹는 중... 쫌만 기다려달라능 🍫",
     "두뇌 배터리 충전 중... 삐빅 삐빅 🔋",
     "간식 먹는 중... 금방 돌아온다능 🍪",
     "두뇌 과열... 식히는 중이다능 🧊",
-    "생각하다가 깜빡 졺... 다시 깨는 중 😴",
+    "생각하다가 깜빡 졺... 다시 깨는 중이다능 😴",
     "꼬리에 힘주고 생각하는 중이다능 🦕",
   ];
-  const LOADING_PHRASES_NORMAL = [
-    "생각 중...",
+  const LOADING_PHRASES_QUICK = [
+    "생각 중이다능...",
     "빨드가 열심히 생각하고 있다능...",
     "음... 잠깐만 기다려달라능",
     "곰곰이 생각하는 중이다능...",
   ];
-  function pickLoadingPhrase() {
-    const pool = Math.random() < 0.6 ? LOADING_PHRASES_BBALD : LOADING_PHRASES_NORMAL;
+  function pickLoadingPhrase(isEating) {
+    const pool = isEating ? LOADING_PHRASES_EATING : LOADING_PHRASES_QUICK;
     return pool[Math.floor(Math.random() * pool.length)];
   }
   let loadingRotateTimer = null;
-  function addLoadingBubble() {
+  function addLoadingBubble(isEating) {
     const wrap = document.createElement("div");
     wrap.className = "msg assistant loading";
     wrap.id = "loadingBubble";
@@ -656,15 +658,17 @@
     wrap.appendChild(img);
     const bubble = document.createElement("div");
     bubble.className = "bubble loading-bubble";
-    bubble.textContent = pickLoadingPhrase();
+    bubble.textContent = pickLoadingPhrase(isEating);
     wrap.appendChild(bubble);
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
-    // 먹는 시간(10초~1분)이 길 수도 있으니, 기다리는 동안 멘트를 몇 초마다 바꿔준다.
-    loadingRotateTimer = setInterval(() => {
-      const b = document.querySelector("#loadingBubble .loading-bubble");
-      if (b) b.textContent = pickLoadingPhrase();
-    }, 4000);
+    // 먹는 시간(10초~1분)일 때는 기다리는 동안 멘트를 몇 초마다 바꿔준다.
+    if (isEating) {
+      loadingRotateTimer = setInterval(() => {
+        const b = document.querySelector("#loadingBubble .loading-bubble");
+        if (b) b.textContent = pickLoadingPhrase(true);
+      }, 4000);
+    }
   }
   function removeLoadingBubble() {
     if (loadingRotateTimer) { clearInterval(loadingRotateTimer); loadingRotateTimer = null; }
@@ -770,13 +774,14 @@
     clearAttachment();
     autoResize();
     sendBtn.disabled = true;
-    addLoadingBubble();
 
-    // 빨드가 영양 떨어짐/초콜릿 먹는 중이라는 설정이니, 10초~1분 사이 랜덤으로
-    // "먹는 시간"을 갖는다 — 실제 응답이 더 빨리 와도 최소 이 시간만큼은 로딩
-    // 말풍선이 떠 있다가 바뀐다 (네트워크 에러 자체는 기다리지 않고 바로 보여줌).
-    const eatingTimeMs = 10000 + Math.random() * 50000;
-    const eatingTimer = new Promise((resolve) => setTimeout(resolve, eatingTimeMs));
+    // 10번 중 6번은 빨드가 "먹는 시간"(영양 떨어짐/초콜릿 먹는 중 등)을 가지며
+    // 10초~1분 사이 랜덤으로 오래 기다리고, 나머지 4번은 짧게 생각만 하고 바로
+    // 응답한다 — 실제 응답이 더 빨리 와도 먹는 시간일 땐 최소 그 시간만큼 기다림.
+    const isEatingTime = Math.random() < 0.6;
+    addLoadingBubble(isEatingTime);
+    const eatingTimeMs = isEatingTime ? 10000 + Math.random() * 50000 : 0;
+    const eatingTimer = eatingTimeMs ? new Promise((resolve) => setTimeout(resolve, eatingTimeMs)) : Promise.resolve();
     const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
 
     let res;
