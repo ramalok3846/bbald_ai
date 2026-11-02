@@ -42,7 +42,16 @@ export async function getBalance(env, identity, startingCredits = STARTING_CREDI
     return startingCredits;
   }
   const n = Number(raw);
-  return Number.isFinite(n) ? n : startingCredits;
+  if (!Number.isFinite(n)) return startingCredits;
+  // 로컬 크레딧은 cap(게스트 30 / 회원 100 등)을 절대 넘지 않는다. 예전 설정(시작값 100)일 때
+  // 저장된 값이나 관리자가 cap을 낮춘 경우처럼 cap보다 큰 값이 KV에 남아 있으면
+  // "297% · 89 / 30" 같은 이상한 표시가 나오므로, 읽을 때 cap으로 깎고 그 값을 저장한다.
+  // (더 큰 지급은 PAL 통합 크레딧으로 한다.)
+  if (n > startingCredits) {
+    await env.RATE_LIMIT_KV.put(creditsKey(identity), String(startingCredits));
+    return startingCredits;
+  }
+  return n;
 }
 
 async function setBalance(env, identity, value) {

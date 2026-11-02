@@ -36,11 +36,11 @@ import {
 // 전반적으로 올렸다 (대략 2배). 그만큼 회원 기본 cap(100)/PRO cap(×3)이 있어야
 // 회원·PRO가 게스트보다 확실히 더 많이 쓸 수 있다.
 const BASE_COST = {
-  builtin: 3,
-  cloudflare: 4,
-  anthropic: 10,
-  openai: 12,
-  gemini: 12,
+  builtin: 4,
+  cloudflare: 6,
+  anthropic: 14,
+  openai: 16,
+  gemini: 16,
 };
 const IMAGE_COST = 3; // 이미지 한 장당 추가 비용 (여러 장이면 장당 더 깎인다)
 // 모든 AI(빨드 기본/Cloudflare/Claude/ChatGPT/Gemini)가 똑같은 4단계 모델을 갖는다.

@@ -169,8 +169,10 @@
 
   function renderCredits(value, cap) {
     if (typeof cap === "number" && cap > 0) creditsCap = cap;
-    const pct = Math.max(0, Math.round((value / creditsCap) * 100));
-    const ringPct = Math.min(100, pct);
+    // 서버가 cap을 넘는 값을 줄 일은 없지만, 혹시 어긋나도 화면엔 100%/최대치까지만 보인다.
+    value = Math.min(Math.max(0, value), creditsCap);
+    const pct = Math.round((value / creditsCap) * 100);
+    const ringPct = pct;
 
     creditValueEl.textContent = pct;
     if (creditDisplay) creditDisplay.textContent = pct;
