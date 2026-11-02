@@ -198,7 +198,7 @@ async function handleAdmin(request, env, url) {
     const admin = await requireAdmin(idToken);
     if (!admin) return json({ error: "관리자 권한이 없다능!" }, { status: 403 });
 
-    const path = url.pathname.slice("/api/admin/".length);
+    const path = url.pathname.replace(/\/+$/, "").slice("/api/admin/".length);
 
     if (path === "me" && request.method === "GET") {
       return json({ admin: true, email: admin.email, uid: admin.uid });
@@ -252,16 +252,21 @@ async function handleAdmin(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    // 프록시 앞단(예: PaLhomepage의 미들웨어)이 실수로 끝에 슬래시를 붙여
+    // "/api/chat/" 같은 요청을 보내는 경우가 있었다(실제로 이것 때문에 전체
+    // 채팅이 404로 응답 못 하는 버그가 있었음). API 경로만큼은 끝 슬래시가
+    // 있어도 없는 것과 동일하게 받아들이도록 방어적으로 정규화한다.
+    const apiPath = url.pathname.startsWith("/api/") ? url.pathname.replace(/\/+$/, "") : url.pathname;
 
-    if (url.pathname === "/api/chat" && request.method === "POST") {
+    if (apiPath === "/api/chat" && request.method === "POST") {
       return handleChat(request, env);
     }
 
-    if (url.pathname === "/api/time") {
+    if (apiPath === "/api/time") {
       return json(getSmartInfo());
     }
 
-    if (url.pathname === "/api/credits" && request.method === "GET") {
+    if (apiPath === "/api/credits" && request.method === "GET") {
       const uid = url.searchParams.get("uid");
       const identity = resolveIdentity(request, uid);
       try {
@@ -273,7 +278,7 @@ export default {
       }
     }
 
-    if (url.pathname === "/api/bonus" && request.method === "POST") {
+    if (apiPath === "/api/bonus" && request.method === "POST") {
       try {
         const body = await request.json();
         const identity = resolveIdentity(request, body.uid);
