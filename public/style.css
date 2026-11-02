@@ -64,9 +64,14 @@ body {
   background: var(--bg-deep);
 }
 
+html, body { height: 100%; }
 .app {
   display: flex;
+  /* 100vh는 모바일 브라우저의 늘었다 줄었다 하는 주소창/툴바를 반영 못 해서
+     화면이 안 맞거나 스크롤이 이상해지는 문제가 있었다. 동적 뷰포트 높이
+     (100dvh)를 지원하는 브라우저는 그걸 쓰고, 안 되면 100vh로 대체한다. */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -79,6 +84,9 @@ body {
   display: flex;
   flex-direction: column;
   padding: 20px 16px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  min-height: 0; /* .app이 flex 컨테이너라, 이게 없으면 내용이 넘칠 때 sidebar가
+                    강제로 늘어나서 모바일에서 스크롤이 이상해지는 문제가 있었다 */
 }
 
 .brand {
@@ -311,6 +319,9 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0; /* flex item 기본값(auto)이면 모바일 Safari 등에서 내용이
+                    넘칠 때 줄어들지 못해 채팅창 스크롤이 안 먹고 전체 화면이
+                    밀리는 문제가 있었다 */
   background: linear-gradient(180deg, var(--bg-deep) 0%, var(--surface) 60%);
 }
 
@@ -399,6 +410,7 @@ body {
 
 .chat-wrap {
   flex: 1;
+  min-height: 0;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -524,6 +536,7 @@ body {
   flex-direction: column;
   gap: 10px;
   padding: 16px 24px 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--surface-soft);
 }
@@ -599,11 +612,19 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 50;
+  /* 모달이 화면보다 길어지면(모바일 세로 화면, 내용 많은 설정창 등) 배경
+     전체를 스크롤할 수 있게 해서 내용이 화면 밖으로 잘려 안 보이는 문제를 막는다. */
+  overflow-y: auto;
+  padding: 24px 12px;
 }
 .modal-backdrop.open { display: flex; }
 .modal {
   width: 420px;
   max-width: 92vw;
+  max-height: 85vh;
+  max-height: 85dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
@@ -616,6 +637,7 @@ body {
   padding: 16px 20px;
   font-weight: 800;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .modal-close {
   border: none;
@@ -629,6 +651,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
 }
 .field {
   display: flex;
@@ -665,6 +689,28 @@ body {
   height: 1px;
   background: var(--border);
   margin: 2px 0;
+}
+.pack-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pack-btn { flex: 1 1 auto; font-size: 0.8rem; padding: 8px 10px; }
+.test-card-details {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.test-card-details summary {
+  cursor: pointer;
+  color: var(--purple-deep);
+  font-weight: 600;
+}
+.test-card-details .field-row { margin-top: 10px; flex-wrap: wrap; }
+.coupon-admin-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
 }
 
 .notices-body {
@@ -762,8 +808,13 @@ body {
   .model-desc { padding: 6px 14px; text-align: left; }
 
   .chat { padding: 14px; }
-  .composer { padding: 12px 14px 16px; }
+  .composer {
+    padding: 12px 14px 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
   .icon-btn { width: 36px; height: 36px; font-size: 0.95rem; }
+
+  .msg { max-width: 92vw; }
 }
 
 @media (max-width: 420px) {

@@ -5,9 +5,13 @@
 // 무시한다.
 
 const STARTING_CREDITS = 100;
-const SIGNUP_BONUS = 100;
-const STICKER_MIN_BONUS = 10;
-const STICKER_MAX_BONUS = 30;
+// 보너스는 cap(게스트/회원마다 다른 시작 크레딧)에 비례한 비율로 준다 — 예전엔
+// 고정 숫자(가입보너스 100, 스티커 10~30)를 그냥 더해서, 게스트처럼 cap이 더
+// 작을 때 cap을 훌쩍 넘어버리거나(예: 잔액 135 / 최대 100 같은 이상한 표시)
+// 반대로 cap이 커지면 보너스 비중이 너무 작아지는 "숫자가 꼬이는" 문제가 있었다.
+const SIGNUP_BONUS_RATIO = 1; // 가입 보너스 = cap의 100% (꽉 채워줌)
+const STICKER_MIN_BONUS_RATIO = 0.1; // 스티커 보너스 = cap의 10~30%
+const STICKER_MAX_BONUS_RATIO = 0.3;
 const STICKER_COOLDOWN_MS = 20 * 1000; // 클릭 스팸으로 연타 못 하게 최소 간격
 
 function creditsKey(identity) {
@@ -55,29 +59,33 @@ export async function spendCredits(env, identity, cost, startingCredits = STARTI
   return { ok: true, balance: next };
 }
 
-export async function claimSignupBonus(env, identity) {
-  if (!env.RATE_LIMIT_KV) return { granted: false, balance: STARTING_CREDITS };
+// cap(게스트/회원마다 다른 시작 크레딧)을 항상 같이 넘겨야 한다 — 그래야
+// "처음 보는 신원이라 KV에 아직 값이 없을 때" 올바른 cap으로 초기화되고,
+// 보너스도 cap을 넘지 않게(min으로 clamp) 더해져서 "135 / 100"처럼 잔액이
+// 최대치보다 커지는 이상한 표시가 안 생긴다.
+export async function claimSignupBonus(env, identity, cap = STARTING_CREDITS) {
+  if (!env.RATE_LIMIT_KV) return { granted: false, balance: cap };
   const already = await env.RATE_LIMIT_KV.get(signupBonusKey(identity));
-  if (already) return { granted: false, balance: await getBalance(env, identity) };
+  if (already) return { granted: false, balance: await getBalance(env, identity, cap) };
   await env.RATE_LIMIT_KV.put(signupBonusKey(identity), "1");
-  const current = await getBalance(env, identity);
-  const next = await setBalance(env, identity, current + SIGNUP_BONUS);
-  return { granted: true, amount: SIGNUP_BONUS, balance: next };
+  const current = await getBalance(env, identity, cap);
+  const amount = Math.max(1, Math.round(cap * SIGNUP_BONUS_RATIO));
+  const next = await setBalance(env, identity, Math.min(cap, current + amount));
+  return { granted: true, amount, balance: next };
 }
 
-export async function claimStickerBonus(env, identity, rand = Math.random) {
+export async function claimStickerBonus(env, identity, cap = STARTING_CREDITS, rand = Math.random) {
+  const amount = Math.max(1, Math.round(cap * (STICKER_MIN_BONUS_RATIO + rand() * (STICKER_MAX_BONUS_RATIO - STICKER_MIN_BONUS_RATIO))));
   if (!env.RATE_LIMIT_KV) {
-    const amount = STICKER_MIN_BONUS + Math.floor(rand() * (STICKER_MAX_BONUS - STICKER_MIN_BONUS + 1));
-    return { granted: true, amount, balance: STARTING_CREDITS };
+    return { granted: true, amount, balance: cap };
   }
   const cooldownKey = stickerCooldownKey(identity);
   const onCooldown = await env.RATE_LIMIT_KV.get(cooldownKey);
-  if (onCooldown) return { granted: false, balance: await getBalance(env, identity) };
+  if (onCooldown) return { granted: false, balance: await getBalance(env, identity, cap) };
 
   await env.RATE_LIMIT_KV.put(cooldownKey, "1", { expirationTtl: Math.ceil(STICKER_COOLDOWN_MS / 1000) });
-  const amount = STICKER_MIN_BONUS + Math.floor(rand() * (STICKER_MAX_BONUS - STICKER_MIN_BONUS + 1));
-  const current = await getBalance(env, identity);
-  const next = await setBalance(env, identity, current + amount);
+  const current = await getBalance(env, identity, cap);
+  const next = await setBalance(env, identity, Math.min(cap, current + amount));
   return { granted: true, amount, balance: next };
 }
 

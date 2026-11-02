@@ -22,6 +22,20 @@ import { getConfig, setConfig } from "./config.js";
 import { requireAdmin } from "./admin.js";
 import { verifyIdToken } from "./firebase-verify.js";
 import { listConversations, getConversation, saveConversation, deleteConversation } from "./conversations.js";
+import {
+  CREDIT_PACKS,
+  PRO_PLAN_INFO,
+  getPlan,
+  getCapBonus,
+  computeEffectiveCap,
+  computeEffectiveDailyLimits,
+  purchaseCreditPack,
+  subscribePro,
+  redeemCoupon,
+  createCoupon,
+  deleteCoupon,
+  listCoupons,
+} from "./billing.js";
 
 // provider 기본 비용 + 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
 // 줄어들게 해달라"는 요청 반영 — 더 똑똑한(비싼) 모델일수록 더 많이 깎는다.
@@ -33,6 +47,9 @@ const BASE_COST = {
   openai: 5,
   gemini: 5,
 };
+// 어느 AI를 고르든 같은 4단계(라이트/기본/딥씽킹/스토리)로 통일한다 —
+// provider마다 모델 개수가 다르면 헷갈리니, 비용 배율·로그인 필요 여부는
+// 전부 동일하게 두고 실제 모델 이름만 provider에 맞게 다르게 쓴다.
 const MODEL_INFO = {
   anthropic: {
     "haiku-4.5": { mult: 1, memberOnly: false }, // 빨드 라이트
@@ -41,12 +58,16 @@ const MODEL_INFO = {
     "fable-5.1": { mult: 2, memberOnly: true }, // 빨드 스토리
   },
   openai: {
-    "gpt-4o-mini": { mult: 1, memberOnly: false },
-    "gpt-4o": { mult: 2, memberOnly: true },
+    "gpt-5.1-mini": { mult: 1, memberOnly: false }, // 빨드 라이트
+    "gpt-5.1": { mult: 1.5, memberOnly: false }, // 빨드 기본
+    "gpt-5.1-pro": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
+    "gpt-5.1-creative": { mult: 2, memberOnly: true }, // 빨드 스토리
   },
   gemini: {
-    "gemini-3.8-flash": { mult: 1, memberOnly: false },
-    "gemini-3.8-pro": { mult: 2, memberOnly: true },
+    "gemini-3.8-flash-lite": { mult: 1, memberOnly: false }, // 빨드 라이트
+    "gemini-3.8-flash": { mult: 1.5, memberOnly: false }, // 빨드 기본
+    "gemini-3.8-pro": { mult: 3, memberOnly: true }, // 빨드 딥씽킹
+    "gemini-3.8-pro-creative": { mult: 2, memberOnly: true }, // 빨드 스토리
   },
 };
 function computeCost(provider, model) {
@@ -57,6 +78,22 @@ function computeCost(provider, model) {
 }
 function isMemberOnlyModel(provider, model) {
   return MODEL_INFO[provider]?.[model]?.memberOnly === true;
+}
+
+// 신원(게스트/회원)에 맞는 cap(크레딧 최대치)·하루 제한을 계산한다. 회원이면
+// 요금제(PRO)·구매/쿠폰으로 늘어난 cap_bonus까지 반영한다 — 게스트는 IP 기반
+// 신원이라 요금제에 가입할 수 없으므로 기본값만 쓴다.
+async function resolveEconomy(env, config, identity, isGuest) {
+  const baseCap = isGuest ? config.startingCreditsGuest : config.startingCredits;
+  const baseDailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
+  if (isGuest) return { cap: baseCap, dailyLimits: baseDailyLimits, plan: { tier: "free" }, capBonus: 0 };
+  const [plan, capBonus] = await Promise.all([getPlan(env, identity), getCapBonus(env, identity)]);
+  return {
+    cap: computeEffectiveCap(baseCap, plan, capBonus),
+    dailyLimits: computeEffectiveDailyLimits(baseDailyLimits, plan),
+    plan,
+    capBonus,
+  };
 }
 
 function json(data, init = {}) {
@@ -106,8 +143,9 @@ async function handleChatInner(request, env) {
   const isGuest = !uid;
   const identity = resolveIdentity(request, uid);
   const config = await getConfig(env);
-  const effectiveCap = isGuest ? config.startingCreditsGuest : config.startingCredits;
-  const effectiveDailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
+  const economy = await resolveEconomy(env, config, identity, isGuest);
+  const effectiveCap = economy.cap;
+  const effectiveDailyLimits = economy.dailyLimits;
 
   const { isSmart, level, sunsetLabel } = getSmartInfo();
   const cost = computeCost(provider, model);
@@ -295,6 +333,27 @@ async function handleAdmin(request, env, url) {
       return json({ error: "delta 또는 setTo 숫자가 필요하다능" }, { status: 400 });
     }
 
+    if (path === "coupon/list" && request.method === "GET") {
+      return json({ items: await listCoupons(env) });
+    }
+
+    if (path === "coupon/create" && request.method === "POST") {
+      const body = await request.json();
+      try {
+        const coupon = await createCoupon(env, body);
+        return json(coupon);
+      } catch (err) {
+        return json({ error: err.message }, { status: 400 });
+      }
+    }
+
+    if (path === "coupon/delete" && request.method === "POST") {
+      const body = await request.json();
+      if (!body.code) return json({ error: "code가 필요하다능" }, { status: 400 });
+      await deleteCoupon(env, body.code);
+      return json({ ok: true });
+    }
+
     return json({ error: "알 수 없는 관리자 API다능" }, { status: 404 });
   } catch (err) {
     return json({ error: `관리자 API 오류다능... (${err?.message || err})` }, { status: 500 });
@@ -343,15 +402,71 @@ async function handleUsage(request, env, url) {
     const identity = resolveIdentity(request, uid);
     const config = await getConfig(env);
     const isGuest = !uid;
-    const cap = isGuest ? config.startingCreditsGuest : config.startingCredits;
-    const dailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
+    const economy = await resolveEconomy(env, config, identity, isGuest);
     const [credits, today] = await Promise.all([
-      getBalance(env, identity, cap),
-      getUsageSummary(env, identity, dailyLimits),
+      getBalance(env, identity, economy.cap),
+      getUsageSummary(env, identity, economy.dailyLimits),
     ]);
-    return json({ credits, cap, isGuest, today });
+    return json({ credits, cap: economy.cap, isGuest, today, plan: economy.plan });
   } catch (err) {
     return json({ error: `사용 정보를 못 불러왔다능... (${err.message})` }, { status: 500 });
+  }
+}
+
+// 요금제/크레딧 충전/쿠폰. 전부 로그인(idToken)이 필요하다 — 게스트는 IP 기반
+// 신원이라 구매/쿠폰 같은 영구적인 혜택을 붙이기엔 적합하지 않다.
+async function handleBilling(request, env, url) {
+  try {
+    const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
+    const user = await verifyIdToken(idToken);
+    if (!user) return json({ error: "로그인이 필요하다능!" }, { status: 401 });
+    const identity = `uid:${user.uid}`;
+    const path = url.pathname.replace(/\/+$/, "").slice("/api/billing/".length);
+    const config = await getConfig(env);
+
+    if (path === "status" && request.method === "GET") {
+      const economy = await resolveEconomy(env, config, identity, false);
+      const credits = await getBalance(env, identity, economy.cap);
+      return json({
+        credits,
+        cap: economy.cap,
+        plan: economy.plan,
+        capBonus: economy.capBonus,
+        packs: CREDIT_PACKS,
+        proPlan: PRO_PLAN_INFO,
+      });
+    }
+
+    if (path === "purchase" && request.method === "POST") {
+      const bodyIn = await request.json();
+      const result = await purchaseCreditPack(env, identity, bodyIn.packId, bodyIn.card);
+      if (!result.ok) return json(result, { status: 400 });
+      const economy = await resolveEconomy(env, config, identity, false);
+      const credits = await getBalance(env, identity, economy.cap);
+      return json({ ...result, credits, cap: economy.cap });
+    }
+
+    if (path === "subscribe" && request.method === "POST") {
+      const bodyIn = await request.json();
+      const result = await subscribePro(env, identity, bodyIn.card);
+      if (!result.ok) return json(result, { status: 400 });
+      const economy = await resolveEconomy(env, config, identity, false);
+      const credits = await getBalance(env, identity, economy.cap);
+      return json({ ...result, credits, cap: economy.cap });
+    }
+
+    if (path === "coupon" && request.method === "POST") {
+      const bodyIn = await request.json();
+      const result = await redeemCoupon(env, identity, bodyIn.code);
+      if (!result.ok) return json(result, { status: 400 });
+      const economy = await resolveEconomy(env, config, identity, false);
+      const credits = await getBalance(env, identity, economy.cap);
+      return json({ ...result, credits, cap: economy.cap });
+    }
+
+    return json({ error: "알 수 없는 요청이다능" }, { status: 404 });
+  } catch (err) {
+    return json({ error: `요금제/결제 처리 중 문제가 생겼다능... (${err?.message || err})` }, { status: 500 });
   }
 }
 
@@ -377,9 +492,9 @@ export default {
       const identity = resolveIdentity(request, uid);
       try {
         const config = await getConfig(env);
-        const cap = uid ? config.startingCredits : config.startingCreditsGuest;
-        const credits = await getBalance(env, identity, cap);
-        return json({ credits, cap });
+        const economy = await resolveEconomy(env, config, identity, !uid);
+        const credits = await getBalance(env, identity, economy.cap);
+        return json({ credits, cap: economy.cap, plan: economy.plan });
       } catch (err) {
         return json({ error: `사용량을 못 불러왔다능... (${err.message})` }, { status: 500 });
       }
@@ -394,13 +509,14 @@ export default {
         const bodyIn = await request.json();
         const identity = resolveIdentity(request, bodyIn.uid);
         const config = await getConfig(env);
-        const cap = bodyIn.uid ? config.startingCredits : config.startingCreditsGuest;
+        const economy = await resolveEconomy(env, config, identity, !bodyIn.uid);
+        const cap = economy.cap;
         if (bodyIn.type === "signup") {
-          const result = await claimSignupBonus(env, identity);
+          const result = await claimSignupBonus(env, identity, cap);
           return json({ ...result, cap });
         }
         if (bodyIn.type === "sticker") {
-          const result = await claimStickerBonus(env, identity);
+          const result = await claimStickerBonus(env, identity, cap);
           return json({ ...result, cap });
         }
         return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
@@ -415,6 +531,10 @@ export default {
 
     if (apiPath === "/api/conversations" || apiPath.startsWith("/api/conversations/")) {
       return handleConversations(request, env, url);
+    }
+
+    if (apiPath.startsWith("/api/billing/")) {
+      return handleBilling(request, env, url);
     }
 
     if (env.ASSETS) {

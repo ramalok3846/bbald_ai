@@ -48,6 +48,13 @@
   const maintenanceMessage = document.getElementById("maintenanceMessage");
   const saveMaintenanceBtn = document.getElementById("saveMaintenanceBtn");
 
+  const couponCodeInput = document.getElementById("couponCodeInput");
+  const couponAmountInput = document.getElementById("couponAmountInput");
+  const couponDaysInput = document.getElementById("couponDaysInput");
+  const couponMaxUsesInput = document.getElementById("couponMaxUsesInput");
+  const createCouponBtn = document.getElementById("createCouponBtn");
+  const couponListBody = document.getElementById("couponListBody");
+
   const toastEl = document.getElementById("toast");
   function toast(msg) {
     toastEl.textContent = msg;
@@ -89,6 +96,7 @@
       showApp();
       loadConfig();
       loadList();
+      loadCoupons();
     } catch (err) {
       idToken = null;
       showGate(`관리자 권한이 없는 계정이다능. (${err.message})`);
@@ -245,6 +253,66 @@
         }),
       });
       toast("점검 모드 설정 저장했다능!");
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  // ---------------- 쿠폰 ----------------
+  async function loadCoupons() {
+    try {
+      const data = await api("coupon/list");
+      couponListBody.innerHTML = "";
+      for (const c of data.items) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${c.code}</td><td>${c.amount || "-"}</td><td>${c.planDays ? c.planDays + "일" : "-"}</td><td>${c.usedCount}/${c.maxUses}</td>`;
+        const del = document.createElement("button");
+        del.className = "btn secondary";
+        del.textContent = "삭제";
+        del.style.padding = "4px 10px";
+        del.style.fontSize = "0.75rem";
+        del.addEventListener("click", async () => {
+          try {
+            await api("coupon/delete", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ code: c.code }),
+            });
+            toast("삭제했다능!");
+            loadCoupons();
+          } catch (err) {
+            toast(err.message);
+          }
+        });
+        const td = document.createElement("td");
+        td.appendChild(del);
+        tr.appendChild(td);
+        couponListBody.appendChild(tr);
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+  createCouponBtn.addEventListener("click", async () => {
+    const code = couponCodeInput.value.trim();
+    if (!code) return toast("쿠폰 코드를 입력해달라능");
+    try {
+      await api("coupon/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code,
+          amount: Number(couponAmountInput.value) || 0,
+          planDays: Number(couponDaysInput.value) || 0,
+          maxUses: Number(couponMaxUsesInput.value) || 1,
+        }),
+      });
+      toast("쿠폰 발급했다능!");
+      couponCodeInput.value = "";
+      couponAmountInput.value = "";
+      couponDaysInput.value = "";
+      couponMaxUsesInput.value = "1";
+      loadCoupons();
     } catch (err) {
       toast(err.message);
     }

@@ -66,6 +66,16 @@
   const newPasswordInput = document.getElementById("newPassword");
   const changePwBtn = document.getElementById("changePwBtn");
 
+  const billingSection = document.getElementById("billingSection");
+  const billingDivider = document.getElementById("billingDivider");
+  const planStatus = document.getElementById("planStatus");
+  const subscribeProBtn = document.getElementById("subscribeProBtn");
+  const couponInput = document.getElementById("couponInput");
+  const couponBtn = document.getElementById("couponBtn");
+  const cardNumberInput = document.getElementById("cardNumber");
+  const cardExpInput = document.getElementById("cardExp");
+  const cardCvcInput = document.getElementById("cardCvc");
+
   const chatWrap = document.querySelector(".chat-wrap");
   const stickerBtn = document.getElementById("stickerBtn");
 
@@ -95,12 +105,16 @@
       { value: "fable-5.1", label: "📖 빨드 스토리", desc: "claude-fable-5.1 — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
     openai: [
-      { value: "gpt-4o-mini", label: "⚡ 챗지피티 라이트", desc: "gpt-4o-mini — 빠르고 가벼운 ChatGPT 두뇌", cost: 1, memberOnly: false },
-      { value: "gpt-4o", label: "🧠 챗지피티 딥씽킹", desc: "gpt-4o — 더 똑똑한 ChatGPT 두뇌", cost: 2, memberOnly: true },
+      { value: "gpt-5.1-mini", label: "⚡ 챗지피티 라이트", desc: "gpt-5.1-mini — 가장 빠르고 가벼운 ChatGPT 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+      { value: "gpt-5.1", label: "🦕 챗지피티 기본", desc: "gpt-5.1 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+      { value: "gpt-5.1-pro", label: "🧠 챗지피티 딥씽킹", desc: "gpt-5.1-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+      { value: "gpt-5.1-creative", label: "📖 챗지피티 스토리", desc: "gpt-5.1-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
     gemini: [
-      { value: "gemini-3.8-flash", label: "⚡ 제미나이 라이트", desc: "gemini-3.8-flash — 빠른 제미나이 두뇌", cost: 1, memberOnly: false },
-      { value: "gemini-3.8-pro", label: "🧠 제미나이 딥씽킹", desc: "gemini-3.8-pro — 더 깊은 제미나이 두뇌", cost: 2, memberOnly: true },
+      { value: "gemini-3.8-flash-lite", label: "⚡ 제미나이 라이트", desc: "gemini-3.8-flash-lite — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+      { value: "gemini-3.8-flash", label: "🦕 제미나이 기본", desc: "gemini-3.8-flash — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+      { value: "gemini-3.8-pro", label: "🧠 제미나이 딥씽킹", desc: "gemini-3.8-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+      { value: "gemini-3.8-pro-creative", label: "📖 제미나이 스토리", desc: "gemini-3.8-pro-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
   };
   function isMemberOnlyModel(provider, model) {
@@ -208,6 +222,80 @@
       usageDetailList.innerHTML = `<p class="hint">상세 사용 정보를 못 불러왔다능...</p>`;
     }
   }
+
+  // ---------------- 요금제 / 크레딧 충전 / 쿠폰 (전부 테스트 모드, 로그인 필요) ----------------
+  function currentTestCard() {
+    return {
+      number: cardNumberInput?.value.trim() || "0000-0000-0000-0000",
+      exp: cardExpInput?.value.trim() || "00/00",
+      cvc: cardCvcInput?.value.trim() || "000",
+    };
+  }
+  async function billingFetch(path, bodyIn) {
+    const idToken = await getFreshIdToken();
+    const res = await fetch(`api/billing/${path}`, {
+      method: bodyIn ? "POST" : "GET",
+      headers: { "content-type": "application/json", "x-user-token": idToken || "" },
+      body: bodyIn ? JSON.stringify(bodyIn) : undefined,
+    });
+    const data = await res.json().catch(() => ({ error: "응답을 이해 못했다능" }));
+    return { ok: res.ok, data };
+  }
+  async function refreshBillingSection() {
+    if (!billingSection) return;
+    const show = !!currentUser; // 게스트는 요금제/충전/쿠폰 자체가 안 보임 (로그인 필요)
+    billingSection.hidden = !show;
+    if (billingDivider) billingDivider.hidden = !show;
+    if (!show) return;
+    const { ok, data } = await billingFetch("status");
+    if (!ok) { planStatus.textContent = "요금제 정보를 못 불러왔다능..."; return; }
+    renderCredits(data.credits, data.cap);
+    planStatus.textContent =
+      data.plan?.tier === "pro"
+        ? `요금제: ⭐ PRO (${new Date(data.plan.expiresAt).toLocaleDateString("ko-KR")}까지)`
+        : "요금제: 무료";
+    if (subscribeProBtn) subscribeProBtn.disabled = data.plan?.tier === "pro";
+  }
+  subscribeProBtn?.addEventListener("click", async () => {
+    subscribeProBtn.disabled = true;
+    const { ok, data } = await billingFetch("subscribe", { card: currentTestCard() });
+    if (ok) {
+      renderCredits(data.credits, data.cap);
+      addMessage("assistant", "PRO 구독 완료다능! (테스트 결제) 크레딧 최대치랑 하루 제한이 늘어났다능 ⭐", { extraClass: "snack" });
+      refreshBillingSection();
+    } else {
+      addMessage("assistant", data.error || "구독에 실패했다능...", { extraClass: "error" });
+      subscribeProBtn.disabled = false;
+    }
+  });
+  document.querySelectorAll(".pack-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const { ok, data } = await billingFetch("purchase", { packId: btn.dataset.pack, card: currentTestCard() });
+      if (ok) {
+        renderCredits(data.credits, data.cap);
+        addMessage("assistant", `크레딧 +${data.amount} 충전됐다능! (테스트 결제) 최대치도 같이 늘어났다능 🎉`, { extraClass: "snack" });
+      } else {
+        addMessage("assistant", data.error || "충전에 실패했다능...", { extraClass: "error" });
+      }
+      btn.disabled = false;
+    });
+  });
+  couponBtn?.addEventListener("click", async () => {
+    const code = couponInput.value.trim();
+    if (!code) return;
+    couponBtn.disabled = true;
+    const { ok, data } = await billingFetch("coupon", { code });
+    if (ok) {
+      renderCredits(data.credits, data.cap);
+      couponInput.value = "";
+      addMessage("assistant", "쿠폰 적용됐다능! 🎁", { extraClass: "snack" });
+      refreshBillingSection();
+    } else {
+      addMessage("assistant", data.error || "쿠폰을 쓸 수 없다능...", { extraClass: "error" });
+    }
+    couponBtn.disabled = false;
+  });
 
   renderCredits(100, 100);
   profilePicUrlInput.value = state.profilePic;
@@ -893,6 +981,7 @@
   settingsBtn.addEventListener("click", () => {
     settingsBackdrop.classList.add("open");
     refreshUsageDetail();
+    refreshBillingSection();
   });
   closeSettings.addEventListener("click", () => settingsBackdrop.classList.remove("open"));
   settingsBackdrop.addEventListener("click", (e) => {

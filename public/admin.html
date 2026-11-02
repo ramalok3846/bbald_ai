@@ -11,7 +11,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=8" />
+<link rel="stylesheet" href="style.css?v=12" />
 <style>
   body { background: var(--bg-deep); }
   .admin-wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
@@ -117,6 +117,22 @@
   </div>
 
   <div class="admin-card">
+    <h2>🎟️ 쿠폰 발급/관리</h2>
+    <p class="muted" style="margin-bottom:10px;">크레딧(amount)과 PRO 요금제 기간(planDays)은 둘 다 선택사항이다 — 둘 다 0이면 그냥 비어있는 쿠폰이다.</p>
+    <div class="row">
+      <input type="text" id="couponCodeInput" placeholder="쿠폰 코드 (예: WELCOME50)" style="max-width:200px;" />
+      <input type="number" id="couponAmountInput" placeholder="크레딧 (예: 50)" style="max-width:140px;" />
+      <input type="number" id="couponDaysInput" placeholder="PRO 기간(일)" style="max-width:140px;" />
+      <input type="number" id="couponMaxUsesInput" placeholder="최대 사용 횟수" value="1" style="max-width:140px;" />
+      <button class="btn" id="createCouponBtn">발급</button>
+    </div>
+    <table style="margin-top:12px;">
+      <thead><tr><th>코드</th><th>크레딧</th><th>PRO 기간</th><th>사용/최대</th><th></th></tr></thead>
+      <tbody id="couponListBody"></tbody>
+    </table>
+  </div>
+
+  <div class="admin-card">
     <h2>🛠️ 점검 모드</h2>
     <div class="switch-row">
       <label><input type="checkbox" id="maintenanceToggle" /> 점검 모드 켜기 (켜지면 모든 사용자에게 아래 메시지만 보여줌)</label>
@@ -130,8 +146,10 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="firebase-config.js?v=8"></script>
-<script type="module" src="auth.js?v=8"></script>
-<script type="module" src="admin.js?v=8"></script>
+<script src="firebase-config.js?v=12"></script>
+<script type="module" src="/js/firebase-init.js"></script>
+<script src="/js/pal-sso.js"></script>
+<script type="module" src="auth.js?v=12"></script>
+<script type="module" src="admin.js?v=12"></script>
 </body>
 </html>

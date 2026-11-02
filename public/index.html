@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>빨드 AI</title>
 <meta name="description" content="멍청하지만 사랑스러운 빨간 공룡 인형 '빨드'와 대화하는 AI 서비스" />
 <meta name="theme-color" content="#F7F5FF" media="(prefers-color-scheme: light)">
@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=12" />
+<link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 <div class="app">
@@ -165,6 +165,44 @@
 
       <div class="divider"></div>
 
+      <div id="billingSection" hidden>
+        <p class="hint"><strong>요금제 / 크레딧 충전</strong> — ⚠️ 전부 테스트 모드다능. 실제 결제는 없고, 아래 테스트 카드로만 "결제"가 통과한다 (카드번호 0000-0000-0000-0000 · 유효기간 00/00 · CVC 000, 미리 채워둠).</p>
+        <p class="hint" id="planStatus">요금제: 무료</p>
+
+        <div class="field">
+          <span>⭐ PRO 요금제 — ₩4,900/월(테스트), 크레딧 최대치 ×3, 하루 제한 ×2</span>
+          <button type="button" id="subscribeProBtn" class="secondary-btn">PRO 구독하기 (테스트 결제)</button>
+        </div>
+
+        <div class="field">
+          <span>크레딧 충전 (최대치도 같이 늘어남)</span>
+          <div class="pack-row">
+            <button type="button" class="secondary-btn pack-btn" data-pack="small">+50 · ₩1,100</button>
+            <button type="button" class="secondary-btn pack-btn" data-pack="medium">+150 · ₩2,900</button>
+            <button type="button" class="secondary-btn pack-btn" data-pack="large">+400 · ₩6,900</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>쿠폰 코드</span>
+            <input type="text" id="couponInput" placeholder="예: WELCOME50" />
+          </label>
+          <button type="button" id="couponBtn" class="secondary-btn">사용하기</button>
+        </div>
+
+        <details class="test-card-details">
+          <summary>테스트 카드 정보 (미리 채워져 있음)</summary>
+          <div class="field-row">
+            <label class="field"><span>카드번호</span><input type="text" id="cardNumber" value="0000-0000-0000-0000" /></label>
+            <label class="field"><span>유효기간</span><input type="text" id="cardExp" value="00/00" style="width:70px" /></label>
+            <label class="field"><span>CVC</span><input type="text" id="cardCvc" value="000" style="width:60px" /></label>
+          </div>
+        </details>
+      </div>
+
+      <div class="divider" id="billingDivider" hidden></div>
+
       <div id="accountSettings">
         <p class="hint">계정 (Firebase 설정이 완료되면 사용 가능):</p>
         <label class="field">
@@ -209,16 +247,16 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=12"></script>
+<script src="firebase-config.js?v=13"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=12"></script>
+<script type="module" src="auth.js?v=13"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>
