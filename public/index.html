@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=16" />
+<link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
 <div class="app">
@@ -112,7 +112,7 @@
         <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부 (여러 개 가능)">📎</button>
         <button type="button" id="attachUrlBtn" class="icon-btn" title="이미지 URL로 첨부">🔗</button>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
-        <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기... (예: 1+1은?) · 이미지 붙여넣기(Ctrl+V), 엔터는 줄바꿈, Ctrl+Enter로 전송" rows="1"></textarea>
+        <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기..." rows="1"></textarea>
         <button type="submit" class="send-btn" id="sendBtn" title="전송 (Ctrl+Enter)" aria-label="전송">
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -229,16 +229,16 @@
   <img id="lightboxImg" alt="확대된 이미지" />
 </div>
 
-<script src="firebase-config.js?v=16"></script>
+<script src="firebase-config.js?v=17"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=16"></script>
+<script type="module" src="auth.js?v=17"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

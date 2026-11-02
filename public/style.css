@@ -57,6 +57,11 @@
 
 * { box-sizing: border-box; }
 
+/* display를 지정한 요소(.lightbox, .attach-preview 등)는 hidden 속성을 이겨버려서
+   숨겨야 할 때도 화면에 떠 있었다 — hidden이면 무조건 숨긴다. */
+[hidden] { display: none !important; }
+html, body { max-width: 100%; overflow-x: hidden; }
+
 body {
   margin: 0;
   font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
@@ -317,6 +322,7 @@ html, body { height: 100%; }
 /* ---------- Main ---------- */
 .main {
   flex: 1;
+  min-width: 0; /* 안의 입력칸/선택창이 넓어도 화면 오른쪽 밖으로 밀려나가지 않게 */
   display: flex;
   flex-direction: column;
   min-height: 0; /* flex item 기본값(auto)이면 모바일 Safari 등에서 내용이
@@ -351,7 +357,7 @@ html, body { height: 100%; }
   color: #e7c6ff;
   white-space: nowrap;
 }
-.topbar-right { display: flex; gap: 10px; align-items: center; }
+.topbar-right { display: flex; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 /* ramalok.kr 메인 홈페이지와 동일한 시스템/라이트/다크 테마 스위치 UI */
 .theme-sw {
@@ -392,6 +398,7 @@ html, body { height: 100%; }
 
 .model-desc {
   margin: 0;
+  overflow-wrap: anywhere;
   padding: 6px 24px;
   font-size: 0.75rem;
   color: var(--text-faint);
@@ -400,6 +407,8 @@ html, body { height: 100%; }
   border-bottom: 1px solid var(--border);
 }
 .select {
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -549,9 +558,11 @@ html, body { height: 100%; }
 }
 .composer-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: flex-end;
+  min-width: 0;
 }
+.composer { min-width: 0; }
 .attach-preview {
   display: flex;
   gap: 8px;
@@ -598,6 +609,11 @@ html, body { height: 100%; }
 .icon-btn:hover { border-color: var(--purple); }
 .input {
   flex: 1;
+  min-width: 0; /* textarea 기본 너비(cols) 때문에 전송 버튼이 화면 밖으로 밀리던 문제 */
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  line-height: 1.4;
   resize: none;
   padding: 12px 14px;
   border-radius: var(--radius-md);
@@ -606,6 +622,7 @@ html, body { height: 100%; }
   font-family: inherit;
   max-height: 140px;
 }
+.input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .input:focus { outline: none; border-color: var(--purple); }
 .send-btn {
   width: 44px;
@@ -888,7 +905,7 @@ html, body { height: 100%; }
   .msg { max-width: 92vw; }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 360px) {
   .select { flex: 1 1 100%; }
   .brand-name { font-size: 1rem; }
 }
