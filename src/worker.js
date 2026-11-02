@@ -7,7 +7,7 @@ import {
   builtinReply,
 } from "./bbald.js";
 import { callAnthropic, callOpenAI, callGemini, callCloudflareAI } from "./providers.js";
-import { checkAndConsumeDailyLimit } from "./rate-limit.js";
+import { checkAndConsumeDailyLimit, getUsageSummary } from "./rate-limit.js";
 import {
   resolveIdentity,
   getBalance,
@@ -20,14 +20,35 @@ import {
 } from "./credits.js";
 import { getConfig, setConfig } from "./config.js";
 import { requireAdmin } from "./admin.js";
+import { verifyIdToken } from "./firebase-verify.js";
+import { listConversations, getConversation, saveConversation, deleteConversation } from "./conversations.js";
 
-const CREDIT_COST = {
-  builtin: 1,
-  cloudflare: 1,
-  gemini: 3,
-  openai: 3,
-  anthropic: 3,
+// provider 기본 비용 + Claude 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
+// 줄어들게 해달라"는 요청 반영 — 더 똑똑한(비싼) 모델일수록 더 많이 깎는다.
+const BASE_COST = {
+  builtin: 2,
+  cloudflare: 2,
+  anthropic: 4,
+  openai: 5,
+  gemini: 5,
 };
+const MODEL_COST_MULTIPLIER = {
+  "haiku-4.5": 1, // 빨드 라이트
+  "sonnet-5": 1.5, // 빨드 기본
+  "opus-5.5": 3, // 빨드 딥씽킹
+  "fable-5.1": 2, // 빨드 스토리
+};
+function computeCost(provider, model) {
+  const base = BASE_COST[provider] ?? 4;
+  if (provider === "anthropic") {
+    const mult = MODEL_COST_MULTIPLIER[model] ?? 1.5;
+    return Math.max(1, Math.round(base * mult));
+  }
+  return base;
+}
+
+// 로그인 없이는 못 쓰는 모델(더 똑똑한/비싼 두뇌). 게스트가 고르면 로그인을 요구한다.
+const MEMBER_ONLY_MODELS = new Set(["opus-5.5", "fable-5.1"]);
 
 function json(data, init = {}) {
   return new Response(JSON.stringify(data), {
@@ -70,17 +91,21 @@ async function handleChatInner(request, env) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
-  const { isSmart, level, sunsetLabel } = getSmartInfo();
-  const cost = CREDIT_COST[provider] ?? 3;
+  const isGuest = !uid;
   const identity = resolveIdentity(request, uid);
   const config = await getConfig(env);
+  const effectiveCap = isGuest ? config.startingCreditsGuest : config.startingCredits;
+  const effectiveDailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
+
+  const { isSmart, level, sunsetLabel } = getSmartInfo();
+  const cost = computeCost(provider, model);
 
   if (config.maintenance?.enabled) {
     return json(
       {
         reply: config.maintenance.message,
-        credits: await getBalance(env, identity, config.startingCredits),
-        cap: config.startingCredits,
+        credits: await getBalance(env, identity, effectiveCap),
+        cap: effectiveCap,
         isSmart,
         snack: false,
         maintenance: true,
@@ -89,16 +114,26 @@ async function handleChatInner(request, env) {
     );
   }
 
+  // 게스트 기능 제한: 이미지 첨부, 고급 모델(딥씽킹/스토리)은 로그인해야 쓸 수 있다.
+  if (isGuest && image) {
+    return json({ error: "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒" }, { status: 403 });
+  }
+  if (isGuest && MEMBER_ONLY_MODELS.has(model)) {
+    return json({ error: "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒" }, { status: 403 });
+  }
+
   // 크레딧은 서버(KV)가 유일한 출처다 — 클라이언트가 뭐라고 보내든 무시하고
   // 서버에 저장된 실제 잔액만 본다. (예전엔 클라이언트가 보낸 숫자를 그대로
   // 믿고 차감만 해서, 설정 화면에서 숫자를 직접 입력하면 무한 충전이 가능했음)
-  const currentBalance = await getBalance(env, identity, config.startingCredits);
+  const currentBalance = await getBalance(env, identity, effectiveCap);
 
   if (currentBalance < cost) {
     return json({
-      reply: "사용량이 다 떨어졌다능... 로그인하거나 내일 다시 놀아달라능! 🦕",
+      reply: isGuest
+        ? "사용량이 다 떨어졌다능... 로그인하면 더 쓸 수 있다능! 🦕"
+        : "사용량이 다 떨어졌다능... 내일 다시 놀아달라능! 🦕",
       credits: currentBalance,
-      cap: config.startingCredits,
+      cap: effectiveCap,
       isSmart,
       snack: false,
       outOfCredits: true,
@@ -111,7 +146,7 @@ async function handleChatInner(request, env) {
     return json({
       reply: mathOverride,
       credits: currentBalance, // 계산은 공짜! 빨드가 직접 (잘못) 계산했으니까
-      cap: config.startingCredits,
+      cap: effectiveCap,
       isSmart,
       snack: false,
       provider: "builtin-math",
@@ -123,16 +158,18 @@ async function handleChatInner(request, env) {
   // "제한 없음"으로 취급하고 그냥 통과시킨다.
   let limitCheck;
   try {
-    limitCheck = await checkAndConsumeDailyLimit(env, request, provider, config.dailyLimits);
+    limitCheck = await checkAndConsumeDailyLimit(env, identity, provider, effectiveDailyLimits);
   } catch (err) {
     limitCheck = { allowed: true, remaining: null, limit: null, enabled: false };
   }
   if (!limitCheck.allowed) {
     return json(
       {
-        reply: "오늘 빨드가 너무 말을 많이 했다능! 하루 사용량을 다 썼어... 내일 다시 놀아달라능! 🌙🦕",
+        reply: isGuest
+          ? "오늘 빨드가 너무 말을 많이 했다능! 게스트는 여기까지... 로그인하면 더 놀 수 있다능! 🌙🦕"
+          : "오늘 빨드가 너무 말을 많이 했다능! 하루 사용량을 다 썼어... 내일 다시 놀아달라능! 🌙🦕",
         credits: currentBalance,
-        cap: config.startingCredits,
+        cap: effectiveCap,
         isSmart,
         snack: false,
         dailyLimitReached: true,
@@ -170,18 +207,19 @@ async function handleChatInner(request, env) {
   }
 
   reply = applyPersonaFlourish(reply, level);
-  const spend = await spendCredits(env, identity, cost, config.startingCredits);
+  const spend = await spendCredits(env, identity, cost, effectiveCap);
   const snack = maybeSnackLine(cost);
 
   return json({
     reply,
     credits: spend.balance,
-    cap: config.startingCredits,
+    cap: effectiveCap,
     isSmart,
     smartLevel: level,
     sunset: sunsetLabel,
     snack: snack || false,
     provider,
+    cost,
     dailyRemaining: limitCheck.remaining,
   });
 }
@@ -249,6 +287,60 @@ async function handleAdmin(request, env, url) {
   }
 }
 
+// 로그인 사용자의 서버 저장 대화 기록. 게스트는 아예 이 경로를 쓰지 않는다
+// (클라이언트가 호출을 안 함) — "비로그인은 저장 안 됨" 요구사항.
+// idToken으로 실제 소유자를 검증해서, 남의 uid를 주장해 남의 대화를 읽는 걸 막는다.
+async function handleConversations(request, env, url) {
+  try {
+    const idToken = request.headers.get("x-user-token") || url.searchParams.get("idToken");
+    const user = await verifyIdToken(idToken);
+    if (!user) return json({ error: "로그인이 필요하다능!" }, { status: 401 });
+
+    const rest = url.pathname.replace(/\/+$/, "").slice("/api/conversations".length); // "" | "/:id"
+    const id = rest.startsWith("/") ? rest.slice(1) : null;
+
+    if (!id && request.method === "GET") {
+      return json({ items: await listConversations(env, user.uid) });
+    }
+    if (id && request.method === "GET") {
+      const conv = await getConversation(env, user.uid, id);
+      if (!conv) return json({ error: "그 대화를 못 찾았다능" }, { status: 404 });
+      return json(conv);
+    }
+    if (!id && request.method === "POST") {
+      const bodyIn = await request.json();
+      const record = await saveConversation(env, user.uid, bodyIn);
+      return json(record);
+    }
+    if (id && request.method === "DELETE") {
+      await deleteConversation(env, user.uid, id);
+      return json({ ok: true });
+    }
+
+    return json({ error: "알 수 없는 요청이다능" }, { status: 404 });
+  } catch (err) {
+    return json({ error: `대화 저장소 오류다능... (${err?.message || err})` }, { status: 500 });
+  }
+}
+
+async function handleUsage(request, env, url) {
+  try {
+    const uid = url.searchParams.get("uid");
+    const identity = resolveIdentity(request, uid);
+    const config = await getConfig(env);
+    const isGuest = !uid;
+    const cap = isGuest ? config.startingCreditsGuest : config.startingCredits;
+    const dailyLimits = isGuest ? config.dailyLimitsGuest : config.dailyLimits;
+    const [credits, today] = await Promise.all([
+      getBalance(env, identity, cap),
+      getUsageSummary(env, identity, dailyLimits),
+    ]);
+    return json({ credits, cap, isGuest, today });
+  } catch (err) {
+    return json({ error: `사용 정보를 못 불러왔다능... (${err.message})` }, { status: 500 });
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -271,25 +363,31 @@ export default {
       const identity = resolveIdentity(request, uid);
       try {
         const config = await getConfig(env);
-        const credits = await getBalance(env, identity, config.startingCredits);
-        return json({ credits, cap: config.startingCredits });
+        const cap = uid ? config.startingCredits : config.startingCreditsGuest;
+        const credits = await getBalance(env, identity, cap);
+        return json({ credits, cap });
       } catch (err) {
         return json({ error: `사용량을 못 불러왔다능... (${err.message})` }, { status: 500 });
       }
     }
 
+    if (apiPath === "/api/usage" && request.method === "GET") {
+      return handleUsage(request, env, url);
+    }
+
     if (apiPath === "/api/bonus" && request.method === "POST") {
       try {
-        const body = await request.json();
-        const identity = resolveIdentity(request, body.uid);
+        const bodyIn = await request.json();
+        const identity = resolveIdentity(request, bodyIn.uid);
         const config = await getConfig(env);
-        if (body.type === "signup") {
+        const cap = bodyIn.uid ? config.startingCredits : config.startingCreditsGuest;
+        if (bodyIn.type === "signup") {
           const result = await claimSignupBonus(env, identity);
-          return json({ ...result, cap: config.startingCredits });
+          return json({ ...result, cap });
         }
-        if (body.type === "sticker") {
+        if (bodyIn.type === "sticker") {
           const result = await claimStickerBonus(env, identity);
-          return json({ ...result, cap: config.startingCredits });
+          return json({ ...result, cap });
         }
         return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
       } catch (err) {
@@ -301,17 +399,19 @@ export default {
       return handleAdmin(request, env, url);
     }
 
+    if (apiPath === "/api/conversations" || apiPath.startsWith("/api/conversations/")) {
+      return handleConversations(request, env, url);
+    }
+
     if (env.ASSETS) {
       const assetRes = await env.ASSETS.fetch(request);
-      // JS/CSS는 프록시(예: ramalok.kr/bbald_ai)를 거칠 때 중간 캐시에 옛날 버전이
-      // 계속 남아있는 문제를 막기 위해 캐시를 짧게 강제한다 (index.html의 ?v= 쿼리와
-      // 함께 이중으로 방어).
-      if (/\.(js|css)(\?|$)/.test(url.pathname + url.search) || /\.(js|css)$/.test(url.pathname)) {
-        const headers = new Headers(assetRes.headers);
-        headers.set("Cache-Control", "no-cache, must-revalidate");
-        return new Response(assetRes.body, { status: assetRes.status, headers });
-      }
-      return assetRes;
+      // 정적 파일(특히 html/js/css)은 프록시(예: ramalok.kr/bbald_ai)나 중간 CDN
+      // 캐시에 옛날 버전·옛날 404가 계속 남아있는 문제가 있었다 (admin.html을 새로
+      // 추가했는데도 예전에 그 경로가 없었을 때의 404 응답이 캐시되어 남아있던 사례
+      // 포함). 그래서 정적 자산 전체에 캐시를 짧게 강제한다.
+      const headers = new Headers(assetRes.headers);
+      headers.set("Cache-Control", "no-cache, must-revalidate");
+      return new Response(assetRes.body, { status: assetRes.status, headers });
     }
 
     return new Response("Not found", { status: 404 });

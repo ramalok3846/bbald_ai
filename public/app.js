@@ -32,16 +32,23 @@
   const modelSelect = document.getElementById("modelSelect");
   const creditValueEl = document.getElementById("usagePctValue");
   const creditDisplay = document.getElementById("creditDisplay");
+  const creditRawDisplay = document.getElementById("creditRawDisplay");
+  const usageRawValue = document.getElementById("usageRawValue");
+  const usageDetailList = document.getElementById("usageDetailList");
   const usageRingFill = document.getElementById("usageRingFill");
   const usageBarFill = document.getElementById("usageBarFill");
   const usageBarFillSettings = document.getElementById("usageBarFillSettings");
   const moodBadge = document.getElementById("moodBadge");
+  const secretBadge = document.getElementById("secretBadge");
   const kstClock = document.getElementById("kstClock");
   const smartState = document.getElementById("smartState");
   const settingsBtn = document.getElementById("settingsBtn");
   const settingsBackdrop = document.getElementById("settingsBackdrop");
   const closeSettings = document.getElementById("closeSettings");
   const newChatBtn = document.getElementById("newChatBtn");
+  const incognitoBtn = document.getElementById("incognitoBtn");
+  const convList = document.getElementById("convList");
+  const convEmptyHint = document.getElementById("convEmptyHint");
 
   const attachBtn = document.getElementById("attachBtn");
   const attachUrlBtn = document.getElementById("attachUrlBtn");
@@ -71,42 +78,57 @@
   const sidebarBackdrop = document.getElementById("sidebarBackdrop");
   const menuToggle = document.getElementById("menuToggle");
 
-  const LS_KEY = "bbald_ai_state_v1";
+  // 로그인 없이는 못 쓰는 모델(딥씽킹/스토리) — 서버(src/worker.js의
+  // MEMBER_ONLY_MODELS)와 동일한 목록. 게스트는 UI에서부터 아예 고를 수 없게 막는다.
+  const MEMBER_ONLY_MODELS = new Set(["opus-5.5", "fable-5.1"]);
+
+  // ---------------- 로컬에 남겨도 되는 값만 localStorage에 저장 ----------------
+  // 크레딧/사용량과 대화 기록은 더 이상 localStorage에 안 둔다 — 크레딧은 항상
+  // 서버(KV)가 유일한 출처고, 대화 기록은 "로그인하면 서버에 저장, 게스트는
+  // 저장 안 함"이라는 요구사항 때문에 로컬 캐시를 두면 오히려 혼란을 일으킨다
+  // (예: 게스트로 쓴 내용이 새로고침해도 남아있으면 "저장 안 됨"이 아니게 됨).
+  const LS_KEY = "bbald_ai_prefs_v2";
 
   function loadState() {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) return JSON.parse(raw);
     } catch {}
-    return { credits: 100, keys: {}, history: [], profilePic: "" };
+    return { keys: {}, profilePic: "" };
   }
   function saveState() {
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
   }
 
   const state = loadState();
-  if (typeof state.credits !== "number") state.credits = 100;
-  if (typeof state.creditsCap !== "number") state.creditsCap = 100;
   state.keys = state.keys || {};
-  state.history = state.history || [];
   state.profilePic = state.profilePic || "";
+  let creditsCap = 100;
 
   let pendingAttachment = null; // { dataUrl, mimeType }
   let currentUser = null;
+  let currentIdToken = null;
+
+  // 현재 화면에 떠있는 대화. 게스트/시크릿 모드에서는 메모리에만 있다가
+  // 새로고침하면 사라진다("미저장"). 로그인 + 일반 모드에서는 매 응답마다
+  // 서버(/api/conversations)에 올려서 ChatGPT/Claude처럼 목록에서 다시 꺼내볼 수 있다.
+  let currentMessages = [];
+  let currentConvId = null;
+  let conversationsCache = [];
+  let isIncognito = false;
 
   const USAGE_RING_CIRCUMFERENCE = 113.1; // 2 * PI * r(18)
 
-  // 크레딧("크레딧"이라는 단어 대신 %로 보여주는 "빨드 파워" 사용량)은 서버(KV)가
-  // 유일한 출처다. localStorage 값은 새로고침 사이 깜빡임을 줄이기 위한 "마지막으로
-  // 본 값" 캐시일 뿐이고, 서버 응답이 올 때마다 덮어쓴다.
   function renderCredits(value, cap) {
-    state.credits = value;
-    if (typeof cap === "number" && cap > 0) state.creditsCap = cap;
-    const pct = Math.max(0, Math.round((value / state.creditsCap) * 100));
+    if (typeof cap === "number" && cap > 0) creditsCap = cap;
+    const pct = Math.max(0, Math.round((value / creditsCap) * 100));
     const ringPct = Math.min(100, pct);
 
     creditValueEl.textContent = pct;
     if (creditDisplay) creditDisplay.textContent = pct;
+    const rawText = `${Math.max(0, Math.round(value))} / ${Math.round(creditsCap)}`;
+    if (usageRawValue) usageRawValue.textContent = rawText;
+    if (creditRawDisplay) creditRawDisplay.textContent = rawText;
 
     const offset = USAGE_RING_CIRCUMFERENCE * (1 - ringPct / 100);
     usageRingFill.style.strokeDashoffset = offset;
@@ -120,7 +142,6 @@
       usageBarFillSettings.style.width = `${ringPct}%`;
       usageBarFillSettings.style.background = lowPower ? "#e05a5a" : "var(--grad)";
     }
-    saveState();
   }
 
   async function syncCreditsFromServer() {
@@ -134,28 +155,37 @@
     } catch {}
   }
 
-  renderCredits(state.credits, state.creditsCap);
-
-  // 저장해둔 대화 기록을 화면에 다시 그려준다 (새로고침/재방문해도 대화가
-  // 남아있도록). 기록이 있으면 HTML에 미리 박아둔 인사말 말풍선은 지운다.
-  function restoreHistory() {
-    if (!state.history.length) return;
-    chatEl.innerHTML = "";
-    for (const entry of state.history) {
-      addMessage(entry.role === "assistant" ? "assistant" : "user", entry.content);
+  const PROVIDER_LABELS = {
+    builtin: "빨드 기본", cloudflare: "Cloudflare", anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini",
+  };
+  async function refreshUsageDetail() {
+    if (!usageDetailList) return;
+    usageDetailList.innerHTML = `<p class="hint">불러오는 중...</p>`;
+    try {
+      const uid = currentUser?.uid || "";
+      const res = await fetch(`api/usage${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
+      if (!res.ok) throw new Error("응답 실패");
+      const data = await res.json();
+      renderCredits(data.credits, data.cap);
+      const rows = Object.entries(data.today || {})
+        .map(([provider, info]) => {
+          const label = PROVIDER_LABELS[provider] || provider;
+          return `<div class="usage-detail-row"><span>${label}</span><span>${info.used} / ${info.enabled ? info.limit : "∞"}</span></div>`;
+        })
+        .join("");
+      usageDetailList.innerHTML = rows || `<p class="hint">아직 오늘 사용한 기록이 없다능!</p>`;
+    } catch {
+      usageDetailList.innerHTML = `<p class="hint">상세 사용 정보를 못 불러왔다능...</p>`;
     }
   }
-  restoreHistory();
+
+  renderCredits(100, 100);
   profilePicUrlInput.value = state.profilePic;
   document.getElementById("key-anthropic").value = state.keys.anthropic || "";
   document.getElementById("key-openai").value = state.keys.openai || "";
   document.getElementById("key-gemini").value = state.keys.gemini || "";
 
   // ---------------- 계정 / 프로필 ----------------
-  function initialsAvatarHtml(label) {
-    return (label || "USER").slice(0, 4).toUpperCase();
-  }
-
   function renderAccount() {
     const customPic = state.profilePic.trim();
     const googlePic = currentUser?.photoURL;
@@ -182,10 +212,26 @@
         : "Firebase 설정 후 로그인 가능";
       authBtn.textContent = "로그인";
     }
+    updateModelLocks();
+  }
+
+  // 게스트는 고급 모델(딥씽킹/스토리)을 아예 고를 수 없게 막는다 — 서버에서도
+  // 똑같이 막지만, 눌렀다가 403을 받고 나서야 알게 하는 대신 UI에서부터 막아준다.
+  function updateModelLocks() {
+    const isGuest = !currentUser;
+    Array.from(modelSelect.options).forEach((opt) => {
+      const locked = isGuest && MEMBER_ONLY_MODELS.has(opt.value);
+      opt.disabled = locked;
+      const base = opt.textContent.replace(/\s*🔒$/, "");
+      opt.textContent = locked ? `${base} 🔒` : base;
+    });
+    if (isGuest && MEMBER_ONLY_MODELS.has(modelSelect.value)) {
+      modelSelect.value = "sonnet-5";
+      updateModelDesc();
+    }
   }
 
   // 가입 보너스는 서버(KV)가 계정당 1회만 지급을 허용한다 (claimSignupBonus).
-  // 클라이언트는 그냥 요청만 보내고, 결과(granted/amount)를 서버가 알려준다.
   async function grantSignupBonusIfNeeded(user) {
     if (!user) return;
     try {
@@ -198,22 +244,171 @@
       const data = await res.json();
       if (data.granted) {
         renderCredits(data.balance, data.cap);
-        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 빨드 파워 ${Math.round((data.amount / (data.cap || state.creditsCap)) * 100)}% 채워줬다능! 🎉🦕`);
+        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 빨드 파워 ${Math.round((data.amount / (data.cap || creditsCap)) * 100)}% 채워줬다능! 🎉🦕`);
       } else if (typeof data.balance === "number") {
         renderCredits(data.balance, data.cap);
       }
     } catch {}
   }
 
-  window.addEventListener("bbald-auth-changed", (e) => {
+  // ---------------- 서버 저장 대화 목록 (로그인 회원만) ----------------
+  function setConvEmptyHint(text) {
+    if (convEmptyHint) convEmptyHint.textContent = text;
+  }
+
+  function renderConvList() {
+    if (!convList) return;
+    convList.querySelectorAll(".conv-item").forEach((el) => el.remove());
+    if (!currentUser) {
+      setConvEmptyHint("로그인하면 대화가 계정에 저장돼서 나중에 다시 볼 수 있다능!");
+      if (convEmptyHint) convEmptyHint.hidden = false;
+      return;
+    }
+    if (!conversationsCache.length) {
+      setConvEmptyHint("아직 저장된 대화가 없다능! 대화를 시작해봐바~");
+      if (convEmptyHint) convEmptyHint.hidden = false;
+      return;
+    }
+    if (convEmptyHint) convEmptyHint.hidden = true;
+    for (const conv of conversationsCache) {
+      const item = document.createElement("div");
+      item.className = "conv-item" + (conv.id === currentConvId ? " active" : "");
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "conv-item-title";
+      titleSpan.textContent = conv.title || "새 대화";
+      item.appendChild(titleSpan);
+      const delBtn = document.createElement("button");
+      delBtn.type = "button";
+      delBtn.className = "conv-item-del";
+      delBtn.textContent = "✕";
+      delBtn.title = "대화 삭제";
+      delBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await deleteConversationRemote(conv.id);
+      });
+      item.appendChild(delBtn);
+      item.addEventListener("click", () => loadConversationById(conv.id));
+      convList.appendChild(item);
+    }
+  }
+
+  async function getFreshIdToken() {
+    if (!currentUser) return null;
+    try {
+      currentIdToken = await currentUser.getIdToken();
+      return currentIdToken;
+    } catch {
+      return currentIdToken;
+    }
+  }
+
+  async function refreshConversationList() {
+    if (!currentUser) {
+      conversationsCache = [];
+      renderConvList();
+      return;
+    }
+    try {
+      const idToken = await getFreshIdToken();
+      const res = await fetch("api/conversations", { headers: { "x-user-token": idToken || "" } });
+      if (res.ok) {
+        const data = await res.json();
+        conversationsCache = data.items || [];
+      }
+    } catch {}
+    renderConvList();
+  }
+
+  async function loadConversationById(id) {
+    if (!currentUser) return;
+    try {
+      const idToken = await getFreshIdToken();
+      const res = await fetch(`api/conversations/${encodeURIComponent(id)}`, {
+        headers: { "x-user-token": idToken || "" },
+      });
+      if (!res.ok) return;
+      const conv = await res.json();
+      currentConvId = conv.id;
+      currentMessages = Array.isArray(conv.messages) ? conv.messages : [];
+      isIncognito = false;
+      updateSecretBadge();
+      chatEl.innerHTML = "";
+      if (!currentMessages.length) {
+        addGreeting();
+      } else {
+        for (const m of currentMessages) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true });
+      }
+      renderConvList();
+      closeSidebar();
+    } catch {}
+  }
+
+  async function deleteConversationRemote(id) {
+    if (!currentUser) return;
+    try {
+      const idToken = await getFreshIdToken();
+      await fetch(`api/conversations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: { "x-user-token": idToken || "" },
+      });
+      conversationsCache = conversationsCache.filter((c) => c.id !== id);
+      if (currentConvId === id) {
+        currentConvId = null;
+        currentMessages = [];
+        chatEl.innerHTML = "";
+        addGreeting();
+      }
+      renderConvList();
+    } catch {}
+  }
+
+  // 로그인 + 시크릿 모드가 아닐 때만 서버에 저장한다. 실패해도 채팅 자체는
+  // 계속되게(조용히 무시) 한다 — 저장은 "덧붙는 기능"이지 핵심 기능을 막으면 안 됨.
+  async function persistCurrentConversation() {
+    if (!currentUser || isIncognito || !currentMessages.length) return;
+    try {
+      const idToken = await getFreshIdToken();
+      const res = await fetch("api/conversations", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-token": idToken || "" },
+        body: JSON.stringify({ id: currentConvId, messages: currentMessages }),
+      });
+      if (res.ok) {
+        const record = await res.json();
+        currentConvId = record.id;
+        const idx = conversationsCache.findIndex((c) => c.id === record.id);
+        const summary = { id: record.id, title: record.title, updatedAt: record.updatedAt };
+        if (idx >= 0) conversationsCache[idx] = summary;
+        else conversationsCache.unshift(summary);
+        renderConvList();
+      }
+    } catch {}
+  }
+
+  // 게스트로 대화하다가 중간에 로그인하면, 지금까지 나눈 대화를 자동으로
+  // 그 계정에 저장해준다 ("자동으로 채팅을 그 계정에 저장"). 시크릿 모드였으면
+  // 원래도 저장될 대화가 아니었으니 건너뛴다.
+  async function autoSaveGuestHistoryOnLogin() {
+    if (isIncognito || !currentMessages.length) return;
+    currentConvId = null; // 게스트 때는 서버 id가 없었으니 새로 만든다
+    await persistCurrentConversation();
+  }
+
+  window.addEventListener("bbald-auth-changed", async (e) => {
+    const previousUser = currentUser;
     currentUser = e.detail.user;
     if (currentUser) {
-      // 구글 로그인 등으로 새로 들어온 사용자에게 첫 가입 보너스 지급 (계정별 1회, 서버가 판단)
+      await getFreshIdToken();
       grantSignupBonusIfNeeded(currentUser);
+      if (!previousUser) await autoSaveGuestHistoryOnLogin();
+      await refreshConversationList();
     } else {
+      currentIdToken = null;
+      conversationsCache = [];
       syncCreditsFromServer();
     }
     renderAccount();
+    renderConvList();
   });
 
   authBtn.addEventListener("click", async () => {
@@ -247,9 +442,6 @@
   renderAccount();
 
   // --- KST 실시간 시계 + 노을 똑똑함 정도 ---
-  // 1순위: 서버(/api/time, suncalc로 실제 서울 일몰 계산). 2순위: 서버 연결이
-  // 안 되면 브라우저에 로드된 SunCalc(인터넷 없이도 동작하는 순수 계산)로 로컬
-  // 계산. 3순위: SunCalc 스크립트마저 못 불러왔으면 평균 일몰 시각(18:30)으로 근사.
   const SEOUL_LAT = 37.5665;
   const SEOUL_LON = 126.978;
   const THREE_PM_MIN = 15 * 60;
@@ -284,7 +476,6 @@
       if (window.SunCalc) {
         const times = window.SunCalc.getTimes(new Date(), SEOUL_LAT, SEOUL_LON);
         if (times?.sunset instanceof Date && !isNaN(times.sunset)) {
-          // sunset은 로컬 브라우저 타임존 기준 Date 객체이므로, KST 값으로 다시 변환한다.
           const parts = new Intl.DateTimeFormat("en-US", {
             timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit",
           }).formatToParts(times.sunset);
@@ -293,7 +484,7 @@
         }
       }
     } catch {}
-    return DEFAULT_SUNSET_MIN; // SunCalc를 못 쓰면 평균 일몰로 근사
+    return DEFAULT_SUNSET_MIN;
   }
 
   function formatHHMM(totalMin) {
@@ -330,7 +521,6 @@
         return;
       }
     } catch {}
-    // 서버 연결 실패(오프라인 등): 로컬 시간 + 로컬 SunCalc(또는 근사 일몰)로 대체
     const local = getLocalKstGuess();
     const sunsetMin = getLocalSunsetMin();
     const level = computeSmartLevel(local.hour, local.minute, sunsetMin);
@@ -388,13 +578,58 @@
     chatEl.scrollTop = chatEl.scrollHeight;
   }
 
+  function addGreeting() {
+    addMessage("assistant", "안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)", { skipStore: true });
+  }
+
+  // ---------------- 생각 중 표시 (클로드 데스크톱의 "대화 압축 중"처럼, 빨드식
+  // 말투 농담이 10번 중 6번 꼴로 나온다) ----------------
+  const LOADING_PHRASES_BBALD = [
+    "영양 떨어짐... 충전 중이다능 🔌",
+    "초콜릿 먹는 중... 쫌만 기다려달라능 🍫",
+    "두뇌 배터리 충전 중... 삐빅 삐빅 🔋",
+    "간식 먹는 중... 금방 돌아온다능 🍪",
+    "두뇌 과열... 식히는 중이다능 🧊",
+    "생각하다가 깜빡 졺... 다시 깨는 중 😴",
+    "꼬리에 힘주고 생각하는 중이다능 🦕",
+  ];
+  const LOADING_PHRASES_NORMAL = [
+    "생각 중...",
+    "빨드가 열심히 생각하고 있다능...",
+    "음... 잠깐만 기다려달라능",
+    "곰곰이 생각하는 중이다능...",
+  ];
+  function pickLoadingPhrase() {
+    const pool = Math.random() < 0.6 ? LOADING_PHRASES_BBALD : LOADING_PHRASES_NORMAL;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  function addLoadingBubble() {
+    const wrap = document.createElement("div");
+    wrap.className = "msg assistant loading";
+    wrap.id = "loadingBubble";
+    const img = document.createElement("img");
+    img.className = "avatar";
+    img.src = "icon-64.png";
+    img.alt = "빨드";
+    wrap.appendChild(img);
+    const bubble = document.createElement("div");
+    bubble.className = "bubble loading-bubble";
+    bubble.textContent = pickLoadingPhrase();
+    wrap.appendChild(bubble);
+    chatEl.appendChild(wrap);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+  function removeLoadingBubble() {
+    document.getElementById("loadingBubble")?.remove();
+  }
+
   function autoResize() {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 140) + "px";
   }
   input.addEventListener("input", autoResize);
 
-  // ---------------- 첨부 이미지 (업로드 / URL / 붙여넣기) ----------------
+  // ---------------- 첨부 이미지 (업로드 / URL / 붙여넣기) — 게스트는 로그인해야 쓸 수 있다 ----------------
   function setAttachment(dataUrl, mimeType) {
     pendingAttachment = { dataUrl, mimeType };
     attachThumb.src = dataUrl;
@@ -424,7 +659,16 @@
     });
   }
 
-  attachBtn.addEventListener("click", () => fileInput.click());
+  function requireLoginForImages() {
+    if (currentUser) return true;
+    addMessage("assistant", "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒", { extraClass: "snack" });
+    return false;
+  }
+
+  attachBtn.addEventListener("click", () => {
+    if (!requireLoginForImages()) return;
+    fileInput.click();
+  });
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
@@ -433,6 +677,7 @@
     fileInput.value = "";
   });
   attachUrlBtn.addEventListener("click", async () => {
+    if (!requireLoginForImages()) return;
     const url = prompt("이미지 URL을 붙여넣어줘바!");
     if (!url) return;
     try {
@@ -448,6 +693,7 @@
     const items = e.clipboardData?.items || [];
     for (const item of items) {
       if (item.type.startsWith("image/")) {
+        if (!currentUser) { e.preventDefault(); requireLoginForImages(); break; }
         const file = item.getAsFile();
         if (file) {
           const dataUrl = await fileToDataUrl(file);
@@ -471,11 +717,12 @@
     const attachment = pendingAttachment;
 
     addMessage("user", text, { imageDataUrl: attachment?.dataUrl });
-    state.history.push({ role: "user", content: text || "(이미지 첨부)" });
+    currentMessages.push({ role: "user", content: text || "(이미지 첨부)" });
     input.value = "";
     clearAttachment();
     autoResize();
     sendBtn.disabled = true;
+    addLoadingBubble();
 
     let res;
     try {
@@ -484,7 +731,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           message: text,
-          history: state.history.slice(-10),
+          history: currentMessages.slice(-10),
           provider,
           model,
           apiKey,
@@ -493,7 +740,7 @@
         }),
       });
     } catch (err) {
-      // fetch() 자체가 실패 = 진짜로 네트워크에 못 닿은 경우 (오프라인, DNS 실패 등)
+      removeLoadingBubble();
       const offline = typeof navigator !== "undefined" && navigator.onLine === false;
       addMessage(
         "assistant",
@@ -503,12 +750,12 @@
         { extraClass: "error" }
       );
       sendBtn.disabled = false;
-      saveState();
       return;
     }
 
     try {
       const data = await res.json();
+      removeLoadingBubble();
 
       if (!res.ok) {
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
@@ -517,7 +764,7 @@
         });
       } else {
         addMessage("assistant", data.reply);
-        state.history.push({ role: "assistant", content: data.reply });
+        currentMessages.push({ role: "assistant", content: data.reply });
         renderCredits(data.credits, data.cap);
         if (data.snack) {
           addMessage("assistant", data.snack, { extraClass: "snack" });
@@ -526,9 +773,10 @@
           const local = getLocalKstGuess();
           updateMoodUI(local.hour, local.minute, data.smartLevel, data.sunset);
         }
+        await persistCurrentConversation();
       }
     } catch (err) {
-      // fetch는 성공했는데 응답이 JSON이 아닌 경우 (프록시/서버가 에러 페이지를 돌려준 경우 등)
+      removeLoadingBubble();
       addMessage(
         "assistant",
         `빨드 응답을 이해 못했다능... (서버가 이상한 응답을 줬다능, status ${res.status})`,
@@ -536,7 +784,6 @@
       );
     } finally {
       sendBtn.disabled = false;
-      saveState();
     }
   });
 
@@ -547,15 +794,41 @@
     }
   });
 
-  newChatBtn.addEventListener("click", () => {
-    state.history = [];
-    saveState();
+  function startNewChat() {
+    currentConvId = null;
+    currentMessages = [];
     chatEl.innerHTML = "";
-    addMessage("assistant", "안뇽!! 새 대화 시작이다능 🦕");
+    addGreeting();
+    renderConvList();
+  }
+
+  newChatBtn.addEventListener("click", startNewChat);
+
+  // ---------------- 시크릿(임시) 채팅 모드 — 켜져 있으면 로그인 상태여도 서버에
+  // 저장하지 않는다. 다른 모드로 섞이지 않게 새 대화로 시작한다. ----------------
+  function updateSecretBadge() {
+    if (secretBadge) secretBadge.hidden = !isIncognito;
+    if (incognitoBtn) incognitoBtn.classList.toggle("active", isIncognito);
+  }
+  incognitoBtn?.addEventListener("click", () => {
+    isIncognito = !isIncognito;
+    updateSecretBadge();
+    startNewChat();
+    addMessage(
+      "assistant",
+      isIncognito
+        ? "시크릿 모드 켜졌다능! 이번 대화는 저장 안 된다능 🕶️"
+        : "시크릿 모드 꺼졌다능! 이제부터 다시 저장된다능 🦕",
+      { extraClass: "snack", skipStore: true }
+    );
   });
+  updateSecretBadge();
 
   // ---------------- 설정 모달 ----------------
-  settingsBtn.addEventListener("click", () => settingsBackdrop.classList.add("open"));
+  settingsBtn.addEventListener("click", () => {
+    settingsBackdrop.classList.add("open");
+    refreshUsageDetail();
+  });
   closeSettings.addEventListener("click", () => settingsBackdrop.classList.remove("open"));
   settingsBackdrop.addEventListener("click", (e) => {
     if (e.target === settingsBackdrop) settingsBackdrop.classList.remove("open");
@@ -568,9 +841,7 @@
     if (e.target === noticesBackdrop) noticesBackdrop.classList.remove("open");
   });
 
-  // ---------------- 모바일 사이드바 토글 (화면 비율에 따라 자동으로 숨겨지는
-  // 사이드바를 햄버거 버튼으로 열고 닫는다. PC 폭에서는 CSS가 menuToggle
-  // 자체를 숨기므로 이 코드는 모바일 폭에서만 실제로 쓰인다.) ----------------
+  // ---------------- 모바일 사이드바 토글 ----------------
   function closeSidebar() {
     sidebar.classList.remove("open");
     sidebarBackdrop.classList.remove("open");
@@ -580,7 +851,8 @@
     sidebarBackdrop.classList.add("open");
   });
   sidebarBackdrop.addEventListener("click", closeSidebar);
-  sidebar.querySelectorAll("button, .conv-item").forEach((el) => {
+  sidebar.querySelectorAll("button").forEach((el) => {
+    if (el.id === "incognitoBtn") return; // 자체 핸들러가 있고, 클릭해도 사이드바를 닫을 필요는 없음
     el.addEventListener("click", closeSidebar);
   });
 
@@ -588,13 +860,19 @@
   const MODEL_DESCRIPTIONS = {
     "haiku-4.5": "⚡ 빨드 라이트 — 제일 빠르고 가벼운 두뇌. 짧고 간단한 대화에 딱이다능!",
     "sonnet-5": "🦕 빨드 기본 — 속도와 똑똑함의 균형. 평소엔 이걸로 쓰면 딱 좋다능!",
-    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 사용량을 더 쓴다능.",
-    "fable-5.1": "📖 빨드 스토리 — 이야기하듯 표현력이 풍부한 두뇌. 창작/이야기에 어울린다능!",
+    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 사용량을 더 쓴다능. (로그인 필요)",
+    "fable-5.1": "📖 빨드 스토리 — 이야기하듯 표현력이 풍부한 두뇌. 창작/이야기에 어울린다능! (로그인 필요)",
   };
   function updateModelDesc() {
     modelDescEl.textContent = MODEL_DESCRIPTIONS[modelSelect.value] || "";
   }
-  modelSelect.addEventListener("change", updateModelDesc);
+  modelSelect.addEventListener("change", () => {
+    if (!currentUser && MEMBER_ONLY_MODELS.has(modelSelect.value)) {
+      modelSelect.value = "sonnet-5";
+      addMessage("assistant", "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒", { extraClass: "snack" });
+    }
+    updateModelDesc();
+  });
   updateModelDesc();
 
   function bindKeyInput(id, providerKey) {
@@ -608,11 +886,11 @@
   bindKeyInput("key-openai", "openai");
   bindKeyInput("key-gemini", "gemini");
 
-  // ---------------- 무작위 빨드 스티커 이벤트 (크레딧 10~30 랜덤 지급, 서버가 결정) ----------------
+  // ---------------- 무작위 빨드 스티커 이벤트 ----------------
   const stickerBadge = stickerBtn.querySelector(".sticker-badge");
   let stickerTimer = null;
   function scheduleSticker() {
-    const delay = 90000 + Math.random() * 150000; // 1.5~4분 랜덤 간격
+    const delay = 90000 + Math.random() * 150000;
     stickerTimer = setTimeout(showSticker, delay);
   }
   function showSticker() {
@@ -627,7 +905,7 @@
     const hideTimer = setTimeout(() => {
       stickerBtn.hidden = true;
       scheduleSticker();
-    }, 4000); // 4초만 보이고 사라짐
+    }, 4000);
 
     stickerBtn.onclick = async () => {
       clearTimeout(hideTimer);
@@ -641,7 +919,7 @@
         const data = await res.json();
         if (data.granted) {
           renderCredits(data.balance, data.cap);
-          const pctGained = Math.round((data.amount / (data.cap || state.creditsCap)) * 100);
+          const pctGained = Math.round((data.amount / (data.cap || creditsCap)) * 100);
           addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 사용량 +${pctGained}% 선물이다능! 🎁🦕`, { extraClass: "snack" });
         } else {
           addMessage("assistant", "어? 방금 막 빨드 간식 다 먹었나보다... 쬐끔 있다 또 찾아봐줘!", { extraClass: "snack" });
@@ -653,4 +931,11 @@
     };
   }
   scheduleSticker();
+
+  // ---------------- 초기 상태: 서버 크레딧 동기화 + 인사 ----------------
+  // index.html에 미리 박아둔 인사 말풍선은 지우고 JS가 다시 그린다 (중복 방지).
+  chatEl.innerHTML = "";
+  syncCreditsFromServer();
+  addGreeting();
+  renderConvList();
 })();

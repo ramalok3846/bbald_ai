@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=8" />
+<link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
 <div class="app">
@@ -27,13 +27,13 @@
       <span class="brand-name">빨드 AI</span>
     </div>
 
-    <button id="newChatBtn" class="new-chat-btn">+ 새 대화</button>
+    <div class="new-chat-row">
+      <button id="newChatBtn" class="new-chat-btn">+ 새 대화</button>
+      <button id="incognitoBtn" class="icon-btn" title="시크릿 모드 (저장 안 됨)">🕶️</button>
+    </div>
 
-    <nav class="conv-list">
-      <div class="conv-item active">
-        <span class="conv-emoji">🦕</span>
-        <span class="conv-title">빨드와의 대화</span>
-      </div>
+    <nav class="conv-list" id="convList">
+      <div class="conv-empty-hint" id="convEmptyHint">로그인하면 대화가 계정에 저장돼서 나중에 다시 볼 수 있다능!</div>
     </nav>
 
     <div class="account-box" id="accountBox">
@@ -53,6 +53,7 @@
         </svg>
         <div class="usage-info">
           <span class="usage-pct"><span id="usagePctValue">100</span>%</span>
+          <span class="usage-raw" id="usageRawValue">100 / 100</span>
           <span class="usage-label">빨드 파워</span>
         </div>
       </div>
@@ -68,6 +69,7 @@
       <div class="topbar-left">
         <button id="menuToggle" class="menu-toggle" aria-label="메뉴 열기">☰</button>
         <span class="mood-badge" id="moodBadge">🌙 아직 멍청한 시간</span>
+        <span class="secret-badge" id="secretBadge" hidden>🕶️ 시크릿 모드 (저장 안 됨)</span>
       </div>
       <div class="topbar-right">
         <select id="providerSelect" class="select">
@@ -152,7 +154,14 @@
       <div class="field">
         <span>빨드 파워 사용량</span>
         <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFillSettings"></div></div>
-        <p class="hint" style="margin-top:4px;"><strong id="creditDisplay">100</strong>% 남아있다능 (서버에 저장되며, 대화/이미지 응답마다 줄어든다능. 로그인하면 가입 보너스, 채팅 중 랜덤 빨드 스티커를 클릭하면 더 채울 수 있다능!)</p>
+        <p class="hint" style="margin-top:4px;"><strong id="creditDisplay">100</strong>% (<span id="creditRawDisplay">100 / 100</span>) 남아있다능 (서버에 저장되며, 대화/이미지 응답마다 줄어든다능. 로그인하면 가입 보너스, 채팅 중 랜덤 빨드 스티커를 클릭하면 더 채울 수 있다능!)</p>
+      </div>
+
+      <div class="field">
+        <span>상세 사용 정보 (오늘, AI별)</span>
+        <div class="usage-detail-list" id="usageDetailList">
+          <p class="hint">불러오는 중...</p>
+        </div>
       </div>
 
       <p class="hint">현재 KST 시간: <span id="kstClock">--:--</span> · <span id="smartState">멍청 모드</span> (오후 3시가 지나면 노을 설정으로 조금 똑똑해진다능)</p>
@@ -203,11 +212,11 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=8"></script>
-<script type="module" src="auth.js?v=8"></script>
+<script src="firebase-config.js?v=9"></script>
+<script type="module" src="auth.js?v=9"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

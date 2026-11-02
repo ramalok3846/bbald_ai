@@ -99,8 +99,13 @@ body {
   color: var(--purple-deep);
 }
 
+.new-chat-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
 .new-chat-btn {
-  width: 100%;
+  flex: 1;
   padding: 10px 14px;
   border: none;
   border-radius: var(--radius-md);
@@ -108,13 +113,22 @@ body {
   color: #fff;
   font-weight: 700;
   cursor: pointer;
-  margin-bottom: 18px;
 }
 .new-chat-btn:hover { filter: brightness(1.05); }
+.new-chat-row .icon-btn.active {
+  border-color: var(--purple-deep);
+  background: var(--bg-deep);
+}
 
 .conv-list {
   flex: 1;
   overflow-y: auto;
+}
+.conv-empty-hint {
+  padding: 10px 12px;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 .conv-item {
   display: flex;
@@ -131,6 +145,23 @@ body {
   color: var(--text);
   font-weight: 600;
 }
+.conv-item-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-item-del {
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px 4px;
+}
+.conv-item-del:hover { color: var(--pink-deep); }
 
 .account-box {
   display: flex;
@@ -231,6 +262,25 @@ body {
   font-size: 0.68rem;
   color: var(--text-faint);
 }
+.usage-raw {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+}
+.usage-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+.usage-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.usage-detail-row:last-child { border-bottom: none; }
 .usage-bar-track {
   width: 100%;
   height: 6px;
@@ -280,6 +330,15 @@ body {
   border-radius: 999px;
   background: var(--bg-deep);
   color: var(--purple-deep);
+}
+.secret-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #2a2438;
+  color: #e7c6ff;
+  white-space: nowrap;
 }
 .topbar-right { display: flex; gap: 10px; align-items: center; }
 
@@ -438,6 +497,15 @@ body {
   background: linear-gradient(90deg, var(--pink-deep), var(--purple-deep));
   color: #fff;
   border-bottom-right-radius: 4px;
+}
+.loading-bubble {
+  color: var(--text-faint);
+  font-style: italic;
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
 .msg.snack .bubble {
   background: #fff4e6;
