@@ -6,9 +6,12 @@
 <title>빨드 AI 관리자</title>
 <meta name="robots" content="noindex, nofollow" />
 <link rel="icon" href="favicon.png" />
+<script>
+(function(){try{var m=localStorage.getItem("bbald_theme");if(m==="light"||m==="dark")document.documentElement.setAttribute("data-theme",m)}catch(e){}})();
+</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=8" />
 <style>
   body { background: var(--bg-deep); }
   .admin-wrap { max-width: 880px; margin: 0 auto; padding: 32px 20px 80px; }
@@ -66,11 +69,16 @@
     <img src="icon-64.png" alt="빨드" />
     <h1>빨드 AI 관리자</h1>
     <span class="muted" id="whoami" style="margin-left:auto;"></span>
+    <div class="theme-sw" id="themeSw" role="group" aria-label="화면 테마">
+      <button type="button" data-mode="system" aria-pressed="true" aria-label="테마: 시스템" title="기기 설정 따라가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3zM8 20h8M12 16v4"></path></svg></button>
+      <button type="button" data-mode="light" aria-pressed="false" aria-label="테마: 라이트" title="라이트 모드"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg></button>
+      <button type="button" data-mode="dark" aria-pressed="false" aria-label="테마: 다크" title="다크 모드"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
+    </div>
     <button id="logoutBtn" class="btn secondary">로그아웃</button>
   </div>
 
   <div class="admin-card">
-    <h2>🔍 크레딧 조회 / 조정</h2>
+    <h2>🔍 사용량 조회 / 조정</h2>
     <p class="muted" style="margin-bottom:10px;">identity 형식: <code>uid:실제uid</code> (로그인 사용자) 또는 <code>ip:1.2.3.4</code> (게스트)</p>
     <div class="row">
       <input type="text" id="lookupIdentity" placeholder="uid:xxxxx 또는 ip:1.2.3.4" />
@@ -86,10 +94,10 @@
   </div>
 
   <div class="admin-card">
-    <h2>📋 최근 크레딧 보유자 목록</h2>
+    <h2>📋 최근 사용량 보유자 목록</h2>
     <button class="btn secondary" id="refreshListBtn">새로고침</button>
     <table style="margin-top:12px;">
-      <thead><tr><th>identity</th><th>크레딧</th><th></th></tr></thead>
+      <thead><tr><th>identity</th><th>사용량</th><th></th></tr></thead>
       <tbody id="listBody"></tbody>
     </table>
   </div>
@@ -101,7 +109,7 @@
   </div>
 
   <div class="admin-card">
-    <h2>🎁 신규 가입 기본 크레딧</h2>
+    <h2>🎁 신규 가입 기본 사용량</h2>
     <div class="row">
       <input type="number" id="startingCreditsInput" style="max-width:140px;" />
       <button class="btn" id="saveStartingBtn">저장</button>
@@ -122,8 +130,8 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="firebase-config.js?v=7"></script>
-<script type="module" src="auth.js?v=7"></script>
-<script type="module" src="admin.js?v=7"></script>
+<script src="firebase-config.js?v=8"></script>
+<script type="module" src="auth.js?v=8"></script>
+<script type="module" src="admin.js?v=8"></script>
 </body>
 </html>

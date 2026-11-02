@@ -1,4 +1,26 @@
 (() => {
+  // ---------------- 테마 (시스템/라이트/다크, ramalok.kr 메인과 동일) ----------------
+  const THEME_KEY = "bbald_theme";
+  function applyTheme(mode) {
+    const de = document.documentElement;
+    if (mode === "light" || mode === "dark") de.setAttribute("data-theme", mode);
+    else de.removeAttribute("data-theme");
+    document.querySelectorAll(".theme-sw button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+    });
+  }
+  function setTheme(mode) {
+    try { localStorage.setItem(THEME_KEY, mode); } catch {}
+    applyTheme(mode);
+  }
+  document.querySelectorAll(".theme-sw").forEach((group) => {
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn) setTheme(btn.dataset.mode);
+    });
+  });
+  applyTheme((() => { try { return localStorage.getItem(THEME_KEY) || "system"; } catch { return "system"; } })());
+
   const gate = document.getElementById("gate");
   const app = document.getElementById("app");
   const gateMsg = document.getElementById("gateMsg");
@@ -80,14 +102,14 @@
   loginBtn.addEventListener("click", () => window.bbaldAuth?.signInGoogle());
   logoutBtn.addEventListener("click", () => window.bbaldAuth?.signOutUser());
 
-  // ---------------- 크레딧 조회/조정 ----------------
+  // ---------------- 사용량 조회/조정 ----------------
   lookupBtn.addEventListener("click", async () => {
     const identity = lookupIdentity.value.trim();
     if (!identity) return;
     try {
       const data = await api(`lookup?identity=${encodeURIComponent(identity)}`);
       currentIdentity = data.identity;
-      lookupResult.textContent = `${data.identity} : ${data.credits} 크레딧`;
+      lookupResult.textContent = `${data.identity} : ${data.credits}`;
       adjustRow.hidden = false;
     } catch (err) {
       toast(err.message);
@@ -103,7 +125,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identity: currentIdentity, delta }),
       });
-      lookupResult.textContent = `${currentIdentity} : ${data.balance} 크레딧`;
+      lookupResult.textContent = `${currentIdentity} : ${data.balance}`;
       toast("적용했다능!");
       loadList();
     } catch (err) {
@@ -120,7 +142,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identity: currentIdentity, setTo }),
       });
-      lookupResult.textContent = `${currentIdentity} : ${data.balance} 크레딧`;
+      lookupResult.textContent = `${currentIdentity} : ${data.balance}`;
       toast("적용했다능!");
       loadList();
     } catch (err) {
@@ -156,7 +178,7 @@
   }
   refreshListBtn.addEventListener("click", loadList);
 
-  // ---------------- 설정 (하루 제한 / 기본 크레딧 / 점검 모드) ----------------
+  // ---------------- 설정 (하루 제한 / 기본 사용량 / 점검 모드) ----------------
   async function loadConfig() {
     try {
       const cfg = await api("config");
@@ -207,7 +229,7 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ startingCredits: Number(startingCreditsInput.value) || 100 }),
       });
-      toast("기본 크레딧 저장했다능!");
+      toast("기본 사용량 저장했다능!");
     } catch (err) {
       toast(err.message);
     }

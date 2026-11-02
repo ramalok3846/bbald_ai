@@ -1,12 +1,40 @@
 (() => {
+  // ---------------- 테마 (시스템/라이트/다크, ramalok.kr 메인과 동일) ----------------
+  const THEME_KEY = "bbald_theme";
+  function applyTheme(mode) {
+    const de = document.documentElement;
+    if (mode === "light" || mode === "dark") de.setAttribute("data-theme", mode);
+    else de.removeAttribute("data-theme");
+    document.querySelectorAll(".theme-sw button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+    });
+  }
+  function setTheme(mode) {
+    try { localStorage.setItem(THEME_KEY, mode); } catch {}
+    applyTheme(mode);
+  }
+  function storedTheme() {
+    try { return localStorage.getItem(THEME_KEY) || "system"; } catch { return "system"; }
+  }
+  document.querySelectorAll(".theme-sw").forEach((group) => {
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest("button");
+      if (btn) setTheme(btn.dataset.mode);
+    });
+  });
+  applyTheme(storedTheme());
+
   const chatEl = document.getElementById("chat");
   const composer = document.getElementById("composer");
   const input = document.getElementById("input");
   const sendBtn = document.getElementById("sendBtn");
   const providerSelect = document.getElementById("providerSelect");
   const modelSelect = document.getElementById("modelSelect");
-  const creditValueEl = document.getElementById("creditValue");
+  const creditValueEl = document.getElementById("usagePctValue");
   const creditDisplay = document.getElementById("creditDisplay");
+  const usageRingFill = document.getElementById("usageRingFill");
+  const usageBarFill = document.getElementById("usageBarFill");
+  const usageBarFillSettings = document.getElementById("usageBarFillSettings");
   const moodBadge = document.getElementById("moodBadge");
   const kstClock = document.getElementById("kstClock");
   const smartState = document.getElementById("smartState");
@@ -58,6 +86,7 @@
 
   const state = loadState();
   if (typeof state.credits !== "number") state.credits = 100;
+  if (typeof state.creditsCap !== "number") state.creditsCap = 100;
   state.keys = state.keys || {};
   state.history = state.history || [];
   state.profilePic = state.profilePic || "";
@@ -65,13 +94,32 @@
   let pendingAttachment = null; // { dataUrl, mimeType }
   let currentUser = null;
 
-  // 크레딧은 서버(KV)가 유일한 출처다. localStorage 값은 새로고침 사이 깜빡임을
-  // 줄이기 위한 "마지막으로 본 값" 캐시일 뿐이고, 아래에서 곧바로 서버 값으로
-  // 덮어쓴다 — 설정에서 숫자를 직접 입력해서 바꾸는 기능은 없앴다.
-  function renderCredits(value) {
+  const USAGE_RING_CIRCUMFERENCE = 113.1; // 2 * PI * r(18)
+
+  // 크레딧("크레딧"이라는 단어 대신 %로 보여주는 "빨드 파워" 사용량)은 서버(KV)가
+  // 유일한 출처다. localStorage 값은 새로고침 사이 깜빡임을 줄이기 위한 "마지막으로
+  // 본 값" 캐시일 뿐이고, 서버 응답이 올 때마다 덮어쓴다.
+  function renderCredits(value, cap) {
     state.credits = value;
-    creditValueEl.textContent = value;
-    if (creditDisplay) creditDisplay.textContent = value;
+    if (typeof cap === "number" && cap > 0) state.creditsCap = cap;
+    const pct = Math.max(0, Math.round((value / state.creditsCap) * 100));
+    const ringPct = Math.min(100, pct);
+
+    creditValueEl.textContent = pct;
+    if (creditDisplay) creditDisplay.textContent = pct;
+
+    const offset = USAGE_RING_CIRCUMFERENCE * (1 - ringPct / 100);
+    usageRingFill.style.strokeDashoffset = offset;
+    const lowPower = pct <= 15;
+    usageRingFill.style.stroke = lowPower ? "#e05a5a" : "var(--purple-deep)";
+    if (usageBarFill) {
+      usageBarFill.style.width = `${ringPct}%`;
+      usageBarFill.style.background = lowPower ? "#e05a5a" : "var(--grad)";
+    }
+    if (usageBarFillSettings) {
+      usageBarFillSettings.style.width = `${ringPct}%`;
+      usageBarFillSettings.style.background = lowPower ? "#e05a5a" : "var(--grad)";
+    }
     saveState();
   }
 
@@ -81,12 +129,23 @@
       const res = await fetch(`api/credits${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
       if (res.ok) {
         const data = await res.json();
-        if (typeof data.credits === "number") renderCredits(data.credits);
+        if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
       }
     } catch {}
   }
 
-  renderCredits(state.credits);
+  renderCredits(state.credits, state.creditsCap);
+
+  // 저장해둔 대화 기록을 화면에 다시 그려준다 (새로고침/재방문해도 대화가
+  // 남아있도록). 기록이 있으면 HTML에 미리 박아둔 인사말 말풍선은 지운다.
+  function restoreHistory() {
+    if (!state.history.length) return;
+    chatEl.innerHTML = "";
+    for (const entry of state.history) {
+      addMessage(entry.role === "assistant" ? "assistant" : "user", entry.content);
+    }
+  }
+  restoreHistory();
   profilePicUrlInput.value = state.profilePic;
   document.getElementById("key-anthropic").value = state.keys.anthropic || "";
   document.getElementById("key-openai").value = state.keys.openai || "";
@@ -138,10 +197,10 @@
       if (!res.ok) return;
       const data = await res.json();
       if (data.granted) {
-        renderCredits(data.balance);
-        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 크레딧 ${data.amount}개 선물이다능! 🎉🦕`);
+        renderCredits(data.balance, data.cap);
+        addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 빨드 파워 ${Math.round((data.amount / (data.cap || state.creditsCap)) * 100)}% 채워줬다능! 🎉🦕`);
       } else if (typeof data.balance === "number") {
-        renderCredits(data.balance);
+        renderCredits(data.balance, data.cap);
       }
     } catch {}
   }
@@ -452,14 +511,14 @@
       const data = await res.json();
 
       if (!res.ok) {
-        if (typeof data.credits === "number") renderCredits(data.credits);
+        if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
         addMessage("assistant", data.error || data.reply || "빨드가 넘어졌다능...", {
           extraClass: data.dailyLimitReached ? "snack" : "error",
         });
       } else {
         addMessage("assistant", data.reply);
         state.history.push({ role: "assistant", content: data.reply });
-        renderCredits(data.credits);
+        renderCredits(data.credits, data.cap);
         if (data.snack) {
           addMessage("assistant", data.snack, { extraClass: "snack" });
         }
@@ -529,7 +588,7 @@
   const MODEL_DESCRIPTIONS = {
     "haiku-4.5": "⚡ 빨드 라이트 — 제일 빠르고 가벼운 두뇌. 짧고 간단한 대화에 딱이다능!",
     "sonnet-5": "🦕 빨드 기본 — 속도와 똑똑함의 균형. 평소엔 이걸로 쓰면 딱 좋다능!",
-    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 크레딧을 더 쓴다능.",
+    "opus-5.5": "🧠 빨드 딥씽킹 — 더 깊게 생각하는 두뇌. 복잡한 질문에 강하지만 사용량을 더 쓴다능.",
     "fable-5.1": "📖 빨드 스토리 — 이야기하듯 표현력이 풍부한 두뇌. 창작/이야기에 어울린다능!",
   };
   function updateModelDesc() {
@@ -581,10 +640,15 @@
         });
         const data = await res.json();
         if (data.granted) {
-          renderCredits(data.balance);
-          addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 크레딧 +${data.amount} 선물이다능! 🎁🦕`, { extraClass: "snack" });
+          renderCredits(data.balance, data.cap);
+          const pctGained = Math.round((data.amount / (data.cap || state.creditsCap)) * 100);
+          addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 사용량 +${pctGained}% 선물이다능! 🎁🦕`, { extraClass: "snack" });
+        } else {
+          addMessage("assistant", "어? 방금 막 빨드 간식 다 먹었나보다... 쬐끔 있다 또 찾아봐줘!", { extraClass: "snack" });
         }
-      } catch {}
+      } catch {
+        addMessage("assistant", "스티커를 못 받았다능... 네트워크가 이상한가봐!", { extraClass: "error" });
+      }
       scheduleSticker();
     };
   }

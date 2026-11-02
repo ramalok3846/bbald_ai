@@ -5,10 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>빨드 AI</title>
 <meta name="description" content="멍청하지만 사랑스러운 빨간 공룡 인형 '빨드'와 대화하는 AI 서비스" />
+<meta name="theme-color" content="#F7F5FF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F0C1C" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="favicon.png" />
+<script>
+/* 첫 화면 깜빡임 방지: ramalok.kr 메인 홈페이지와 같은 방식으로, 방문자가 고른
+   테마를 CSS보다 먼저 적용한다 (localStorage의 "bbald_theme"). */
+(function(){try{var m=localStorage.getItem("bbald_theme");if(m==="light"||m==="dark")document.documentElement.setAttribute("data-theme",m)}catch(e){}})();
+</script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
 <div class="app">
@@ -39,10 +46,17 @@
     </div>
 
     <div class="sidebar-footer">
-      <div class="credit-pill" id="creditPill">
-        <span class="credit-dot"></span>
-        <span id="creditValue">100</span> 크레딧
+      <div class="usage-gauge" id="usagePill" title="빨드 파워 사용량">
+        <svg class="usage-ring" viewBox="0 0 44 44" width="40" height="40">
+          <circle class="usage-ring-track" cx="22" cy="22" r="18" />
+          <circle class="usage-ring-fill" id="usageRingFill" cx="22" cy="22" r="18" />
+        </svg>
+        <div class="usage-info">
+          <span class="usage-pct"><span id="usagePctValue">100</span>%</span>
+          <span class="usage-label">빨드 파워</span>
+        </div>
       </div>
+      <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFill"></div></div>
       <button id="noticesBtn" class="settings-btn">📢 공지사항</button>
       <button id="settingsBtn" class="settings-btn">⚙️ 설정</button>
       <a href="admin.html" class="settings-btn" style="text-align:center;text-decoration:none;">🔐 관리자</a>
@@ -69,6 +83,11 @@
           <option value="opus-5.5">🧠 빨드 딥씽킹</option>
           <option value="fable-5.1">📖 빨드 스토리</option>
         </select>
+        <div class="theme-sw" id="themeSw" role="group" aria-label="화면 테마">
+          <button type="button" data-mode="system" aria-pressed="true" aria-label="테마: 시스템" title="기기 설정 따라가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3zM8 20h8M12 16v4"></path></svg></button>
+          <button type="button" data-mode="light" aria-pressed="false" aria-label="테마: 라이트" title="라이트 모드"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg></button>
+          <button type="button" data-mode="dark" aria-pressed="false" aria-label="테마: 다크" title="다크 모드"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path></svg></button>
+        </div>
       </div>
     </header>
     <p class="model-desc" id="modelDesc">균형잡힌 두뇌 — 평소엔 이걸로 쓰면 딱 좋다능!</p>
@@ -130,7 +149,11 @@
       </label>
       <p class="hint">API 키는 이 브라우저에만 저장되고, 서버에는 저장되지 않는다능. Cloudflare Workers AI는 별도 키 없이 바로 사용 가능!</p>
 
-      <p class="hint">현재 크레딧: <strong id="creditDisplay">100</strong>개 (서버에 저장되며, 대화/이미지 응답마다 차감된다능. 로그인하면 가입 보너스, 채팅 중 랜덤 빨드 스티커를 클릭하면 추가로 받을 수 있다능!)</p>
+      <div class="field">
+        <span>빨드 파워 사용량</span>
+        <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFillSettings"></div></div>
+        <p class="hint" style="margin-top:4px;"><strong id="creditDisplay">100</strong>% 남아있다능 (서버에 저장되며, 대화/이미지 응답마다 줄어든다능. 로그인하면 가입 보너스, 채팅 중 랜덤 빨드 스티커를 클릭하면 더 채울 수 있다능!)</p>
+      </div>
 
       <p class="hint">현재 KST 시간: <span id="kstClock">--:--</span> · <span id="smartState">멍청 모드</span> (오후 3시가 지나면 노을 설정으로 조금 똑똑해진다능)</p>
 
@@ -164,12 +187,12 @@
       <article class="notice-card">
         <img class="notice-image" src="icon-256.png" alt="빨드 스티커 이벤트" />
         <h3>🎁 랜덤 빨드 스티커 이벤트</h3>
-        <p>채팅 중 화면 아무 곳에나 빨드 스티커가 잠깐(4초) 나타난다능! 놓치기 전에 클릭하면 크레딧 10~30개를 랜덤으로 준다능. 눈 크게 뜨고 있어바!</p>
+        <p>채팅 중 화면 아무 곳에나 빨드 스티커가 잠깐(4초) 나타난다능! 놓치기 전에 클릭하면 빨드 파워 사용량을 10~30% 랜덤으로 채워준다능. 눈 크게 뜨고 있어바!</p>
       </article>
       <article class="notice-card">
         <img class="notice-image" src="icon-256.png" alt="가입 보너스 이벤트" />
-        <h3>🎉 첫 가입 크레딧 보너스</h3>
-        <p>로그인/회원가입하면 계정당 1회, 크레딧 100개를 바로 선물로 준다능! 게스트로도 쓸 수 있지만, 로그인하면 더 든든하다능.</p>
+        <h3>🎉 첫 가입 보너스</h3>
+        <p>로그인/회원가입하면 계정당 1회, 빨드 파워 사용량을 100% 바로 채워준다능! 게스트로도 쓸 수 있지만, 로그인하면 더 든든하다능.</p>
       </article>
       <article class="notice-card">
         <img class="notice-image" src="icon-256.png" alt="노을 모드 안내" />
@@ -180,11 +203,11 @@
   </div>
 </div>
 
-<script src="firebase-config.js?v=7"></script>
-<script type="module" src="auth.js?v=7"></script>
+<script src="firebase-config.js?v=8"></script>
+<script type="module" src="auth.js?v=8"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

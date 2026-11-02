@@ -77,7 +77,14 @@ async function handleChatInner(request, env) {
 
   if (config.maintenance?.enabled) {
     return json(
-      { reply: config.maintenance.message, credits: await getBalance(env, identity, config.startingCredits), isSmart, snack: false, maintenance: true },
+      {
+        reply: config.maintenance.message,
+        credits: await getBalance(env, identity, config.startingCredits),
+        cap: config.startingCredits,
+        isSmart,
+        snack: false,
+        maintenance: true,
+      },
       { status: 503 }
     );
   }
@@ -89,8 +96,9 @@ async function handleChatInner(request, env) {
 
   if (currentBalance < cost) {
     return json({
-      reply: "크레딧이 다 떨어졌다능... 로그인하거나 내일 다시 놀아달라능! 🦕",
+      reply: "사용량이 다 떨어졌다능... 로그인하거나 내일 다시 놀아달라능! 🦕",
       credits: currentBalance,
+      cap: config.startingCredits,
       isSmart,
       snack: false,
       outOfCredits: true,
@@ -103,6 +111,7 @@ async function handleChatInner(request, env) {
     return json({
       reply: mathOverride,
       credits: currentBalance, // 계산은 공짜! 빨드가 직접 (잘못) 계산했으니까
+      cap: config.startingCredits,
       isSmart,
       snack: false,
       provider: "builtin-math",
@@ -123,6 +132,7 @@ async function handleChatInner(request, env) {
       {
         reply: "오늘 빨드가 너무 말을 많이 했다능! 하루 사용량을 다 썼어... 내일 다시 놀아달라능! 🌙🦕",
         credits: currentBalance,
+        cap: config.startingCredits,
         isSmart,
         snack: false,
         dailyLimitReached: true,
@@ -166,6 +176,7 @@ async function handleChatInner(request, env) {
   return json({
     reply,
     credits: spend.balance,
+    cap: config.startingCredits,
     isSmart,
     smartLevel: level,
     sunset: sunsetLabel,
@@ -254,10 +265,11 @@ export default {
       const uid = url.searchParams.get("uid");
       const identity = resolveIdentity(request, uid);
       try {
-        const credits = await getBalance(env, identity);
-        return json({ credits });
+        const config = await getConfig(env);
+        const credits = await getBalance(env, identity, config.startingCredits);
+        return json({ credits, cap: config.startingCredits });
       } catch (err) {
-        return json({ error: `크레딧을 못 불러왔다능... (${err.message})` }, { status: 500 });
+        return json({ error: `사용량을 못 불러왔다능... (${err.message})` }, { status: 500 });
       }
     }
 
@@ -265,13 +277,14 @@ export default {
       try {
         const body = await request.json();
         const identity = resolveIdentity(request, body.uid);
+        const config = await getConfig(env);
         if (body.type === "signup") {
           const result = await claimSignupBonus(env, identity);
-          return json(result);
+          return json({ ...result, cap: config.startingCredits });
         }
         if (body.type === "sticker") {
           const result = await claimStickerBonus(env, identity);
-          return json(result);
+          return json({ ...result, cap: config.startingCredits });
         }
         return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
       } catch (err) {
