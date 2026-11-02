@@ -10,13 +10,11 @@ binding = "ASSETS"
 # true로 두면 모든 요청이 일단 Worker로 오고, worker.js가 /api/* 가 아니면
 # env.ASSETS.fetch(request)로 정적 파일을 대신 서빙한다 (동작은 동일).
 run_worker_first = true
-# Cloudflare Assets 기본 동작(auto-trailing-slash)은 "/admin.html" 요청을
-# "/admin"으로 308 리다이렉트한다. 그 Location이 PaLhomepage의 리버스 프록시를
-# 거쳐 브라우저로 그대로 전달되면, 브라우저는 그걸 ramalok.kr 기준 상대경로로
-# 풀어서 "https://www.ramalok.kr/admin"으로 이동하는데, 그 경로는 메인 사이트
-# 미들웨어가 관리자 서브도메인 전용으로 막아둬서 "관리자 페이지가 안 열리는"
-# 문제가 생겼다. 자동 리다이렉트를 꺼서 요청한 경로를 그대로 서빙하게 한다.
-html_handling = "none"
+# (예전에 여기 html_handling = "none"을 넣었던 적이 있는데, 그러면 "/" 요청을
+# index.html로 자동 연결해주는 기능까지 같이 꺼져서 사이트 전체가 404가 나는
+# 더 큰 문제가 생겼다 — 절대 넣지 말 것! 관리자 페이지가 "/admin"으로 리다이렉트
+# 됐다가 메인 사이트 미들웨어에 막히던 문제는 애초에 파일 이름을 admin.html ->
+# adm1in.html로 바꿔서 해결했다 — "/adm1in"은 미들웨어 차단 목록에 없다.)
 
 [ai]
 binding = "AI"
