@@ -78,6 +78,30 @@ function isMemberOnlyModel(tier) {
   return TIERS[normalizeTier(tier)].memberOnly;
 }
 
+// 게스트는 IP가 아니라 브라우저가 만든 고유 ID(x-guest-id)로 구분한다 — IP로만 구분하면 같은
+// 와이파이/통신사 망을 쓰는 사람들이 잔액을 같이 쓰게 된다. 대신 저장소를 지워 새 ID로 크레딧을
+// 계속 새로 받는 걸 막으려고, 같은 IP에서 하루에 새로 만들 수 있는 게스트 ID 수를 제한하고
+// 넘으면 예전처럼 IP 기준 신원(공유)으로 되돌린다.
+const GUEST_ID_RE = /^[A-Za-z0-9-]{16,64}$/;
+const MAX_NEW_GUEST_IDS_PER_IP_PER_DAY = 20;
+async function guestIdentity(request, env, ipIdentity) {
+  const gid = request.headers.get("x-guest-id") || "";
+  if (!GUEST_ID_RE.test(gid) || !env.RATE_LIMIT_KV) return ipIdentity;
+  const identity = `guest:${gid}`;
+  try {
+    if (await env.RATE_LIMIT_KV.get(`guestseen:${gid}`)) return identity;
+    const day = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+    const countKey = `guestnew:${ipIdentity}:${day}`;
+    const count = Number(await env.RATE_LIMIT_KV.get(countKey)) || 0;
+    if (count >= MAX_NEW_GUEST_IDS_PER_IP_PER_DAY) return ipIdentity;
+    await env.RATE_LIMIT_KV.put(countKey, String(count + 1), { expirationTtl: 2 * 24 * 3600 });
+    await env.RATE_LIMIT_KV.put(`guestseen:${gid}`, "1", { expirationTtl: 90 * 24 * 3600 });
+  } catch {
+    return ipIdentity;
+  }
+  return identity;
+}
+
 // 요청 한 건의 계정 상태. 회원(검증된 Firebase ID 토큰)이면 로컬(KV) 기본 크레딧에
 // PAL 통합 크레딧(billing/{uid})을 합쳐서 한 잔액으로 보여주고, 요금제가 무료가
 // 아니면 하루 제한도 늘려준다. 토큰이 없거나 uid와 안 맞으면 게스트로 취급한다.
@@ -87,7 +111,8 @@ async function getAccount(request, env, config, uid, idToken) {
     const u = await verifyIdToken(idToken);
     if (u && u.uid === uid) verifiedUid = u.uid;
   }
-  const identity = resolveIdentity(request, verifiedUid);
+  let identity = resolveIdentity(request, verifiedUid);
+  if (!verifiedUid) identity = await guestIdentity(request, env, identity);
   if (!verifiedUid) {
     const cap = config.startingCreditsGuest;
     const local = await getBalance(env, identity, cap);

@@ -153,6 +153,22 @@
   // 응답이 왔을 때 세대가 바뀌었으면(=그 사이 로그인 상태가 바뀌었으면) 그냥 버린다.
   let creditsGen = 0;
 
+  // 게스트를 구분하는 브라우저 고유 ID. 같은 와이파이/통신사 망(IP)을 쓰는 다른 사람과
+  // 크레딧이 섞이지 않게 서버로 보낸다 (로그인하면 계정 uid가 우선이라 쓰이지 않음).
+  function guestId() {
+    try {
+      let id = localStorage.getItem("bbald_guest_id");
+      if (!id) {
+        id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}-xxxxxxxx`).replace(/[^A-Za-z0-9-]/g, "");
+        localStorage.setItem("bbald_guest_id", id);
+      }
+      return id;
+    } catch {
+      return "";
+    }
+  }
+  const guestHeaders = () => (currentUser ? {} : { "x-guest-id": guestId() });
+
   let pendingAttachments = []; // [{ dataUrl, mimeType }] — 이미지 여러 장 첨부
   let currentUser = null;
   let currentIdToken = null;
@@ -201,7 +217,7 @@
       const idToken = uid ? await getFreshIdToken() : null;
       const res = await fetch(
         `api/credits${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`,
-        idToken ? { headers: { "x-user-token": idToken } } : undefined
+        { headers: idToken ? { "x-user-token": idToken } : guestHeaders() }
       );
       if (res.ok) {
         const data = await res.json();
@@ -223,7 +239,7 @@
       const idToken = uid ? await getFreshIdToken() : null;
       const res = await fetch(
         `api/usage${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`,
-        idToken ? { headers: { "x-user-token": idToken } } : undefined
+        { headers: idToken ? { "x-user-token": idToken } : guestHeaders() }
       );
       if (!res.ok) throw new Error("응답 실패");
       const data = await res.json();
@@ -357,7 +373,7 @@
       const idToken = await getFreshIdToken();
       const res = await fetch("api/bonus", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...guestHeaders() },
         body: JSON.stringify({ type: "signup", uid: user.uid, idToken }),
       });
       if (!res.ok) return;
@@ -893,7 +909,7 @@
       const [fetchRes] = await Promise.all([
         fetch("api/chat", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...guestHeaders() },
           body: JSON.stringify({
             message: text,
             history: currentMessages.slice(-10),
@@ -1114,7 +1130,7 @@
         const idToken = currentUser ? await getFreshIdToken() : null;
         const res = await fetch("api/bonus", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...guestHeaders() },
           body: JSON.stringify({ type: "sticker", uid: currentUser?.uid || null, idToken }),
         });
         const data = await res.json();
