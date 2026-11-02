@@ -150,6 +150,14 @@
   const state = loadState();
   state.keys = state.keys || {};
   let creditsCap = 100;
+  // 로그인/로그아웃이 바뀔 때마다 올라가는 세대 번호. 크레딧을 서버에서 받아오는
+  // 함수(syncCreditsFromServer/refreshUsageDetail/refreshBillingSection/
+  // grantSignupBonusIfNeeded)는 전부 비동기라서, 예를 들어 "게스트 크레딧
+  // 조회"가 느리게 끝나는 사이 로그인이 돼서 "회원 크레딧"이 먼저 화면에
+  // 반영된 뒤, 뒤늦게 도착한 게스트 응답이 그걸 덮어써버리는 경쟁 상태가 있었다
+  // ("크레딧 숫자가 섞이고 난리"의 원인). 요청을 보낼 때의 세대 번호를 기억해뒀다가,
+  // 응답이 왔을 때 세대가 바뀌었으면(=그 사이 로그인 상태가 바뀌었으면) 그냥 버린다.
+  let creditsGen = 0;
 
   let pendingAttachments = []; // [{ dataUrl, mimeType }] — 이미지 여러 장 첨부
   let currentUser = null;
@@ -191,6 +199,7 @@
   }
 
   async function syncCreditsFromServer() {
+    const gen = creditsGen;
     try {
       const uid = currentUser?.uid || "";
       const idToken = uid ? await getFreshIdToken() : null;
@@ -200,6 +209,7 @@
       );
       if (res.ok) {
         const data = await res.json();
+        if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
       }
     } catch {}
@@ -211,6 +221,7 @@
   async function refreshUsageDetail() {
     if (!usageDetailList) return;
     usageDetailList.innerHTML = `<p class="hint">불러오는 중...</p>`;
+    const gen = creditsGen;
     try {
       const uid = currentUser?.uid || "";
       const idToken = uid ? await getFreshIdToken() : null;
@@ -220,6 +231,7 @@
       );
       if (!res.ok) throw new Error("응답 실패");
       const data = await res.json();
+      if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
       renderCredits(data.credits, data.cap);
       const rows = Object.entries(data.today || {})
         .map(([provider, info]) => {
@@ -257,7 +269,9 @@
     billingSection.hidden = !show;
     if (billingDivider) billingDivider.hidden = !show;
     if (!show) return;
+    const gen = creditsGen;
     const { ok, data } = await billingFetch("status");
+    if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
     if (!ok) { planStatus.textContent = "요금제 정보를 못 불러왔다능..."; return; }
     renderCredits(data.credits, data.cap);
     const isPro = data.plan?.tier === "pro";
@@ -377,6 +391,7 @@
   // 가입 보너스는 서버(KV)가 계정당 1회만 지급을 허용한다 (claimSignupBonus).
   async function grantSignupBonusIfNeeded(user) {
     if (!user) return;
+    const gen = creditsGen;
     try {
       const idToken = await getFreshIdToken();
       const res = await fetch("api/bonus", {
@@ -386,6 +401,7 @@
       });
       if (!res.ok) return;
       const data = await res.json();
+      if (gen !== creditsGen) return; // 그 사이 로그인 상태가 바뀜 — 이 응답은 버림
       if (data.granted) {
         renderCredits(data.balance, data.cap);
         addMessage("assistant", `가입한다능?! 축하한다능! 첫 가입 보너스로 빨드 파워 ${Math.round((data.amount / (data.cap || creditsCap)) * 100)}% 채워줬다능! 🎉🦕`);
@@ -541,6 +557,7 @@
   window.addEventListener("bbald-auth-changed", async (e) => {
     const previousUser = currentUser;
     currentUser = e.detail.user;
+    creditsGen++;
     if (currentUser) {
       await getFreshIdToken();
       grantSignupBonusIfNeeded(currentUser);
