@@ -105,16 +105,19 @@
       { value: "fable-5.1", label: "📖 빨드 스토리", desc: "claude-fable-5.1 — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
     openai: [
-      { value: "gpt-5.1-mini", label: "⚡ 챗지피티 라이트", desc: "gpt-5.1-mini — 가장 빠르고 가벼운 ChatGPT 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-      { value: "gpt-5.1", label: "🦕 챗지피티 기본", desc: "gpt-5.1 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-      { value: "gpt-5.1-pro", label: "🧠 챗지피티 딥씽킹", desc: "gpt-5.1-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-      { value: "gpt-5.1-creative", label: "📖 챗지피티 스토리", desc: "gpt-5.1-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
+      // 라벨은 Claude와 완전히 동일하게("빨드 라이트/기본/딥씽킹/스토리") 맞춘다 —
+      // "AI(provider)는 여러 개여도 모델 단계 이름은 다 똑같아야 한다"는 요청.
+      // 실제로 어떤 모델이 불려가는지는 desc에 진짜 모델 id로 적어둔다.
+      { value: "gpt-5.1-mini", label: "⚡ 빨드 라이트", desc: "gpt-5.1-mini — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+      { value: "gpt-5.1", label: "🦕 빨드 기본", desc: "gpt-5.1 — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+      { value: "gpt-5.1-pro", label: "🧠 빨드 딥씽킹", desc: "gpt-5.1-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+      { value: "gpt-5.1-creative", label: "📖 빨드 스토리", desc: "gpt-5.1-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
     gemini: [
-      { value: "gemini-3.8-flash-lite", label: "⚡ 제미나이 라이트", desc: "gemini-3.8-flash-lite — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-      { value: "gemini-3.8-flash", label: "🦕 제미나이 기본", desc: "gemini-3.8-flash — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-      { value: "gemini-3.8-pro", label: "🧠 제미나이 딥씽킹", desc: "gemini-3.8-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-      { value: "gemini-3.8-pro-creative", label: "📖 제미나이 스토리", desc: "gemini-3.8-pro-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
+      { value: "gemini-3.8-flash-lite", label: "⚡ 빨드 라이트", desc: "gemini-3.8-flash-lite — 가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+      { value: "gemini-3.8-flash", label: "🦕 빨드 기본", desc: "gemini-3.8-flash — 속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+      { value: "gemini-3.8-pro", label: "🧠 빨드 딥씽킹", desc: "gemini-3.8-pro — 가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+      { value: "gemini-3.8-pro-creative", label: "📖 빨드 스토리", desc: "gemini-3.8-pro-creative — 표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
     ],
   };
   function isMemberOnlyModel(provider, model) {

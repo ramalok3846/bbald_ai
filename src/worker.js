@@ -545,6 +545,38 @@ export default {
       // 포함). 그래서 정적 자산 전체에 캐시를 짧게 강제한다.
       const headers = new Headers(assetRes.headers);
       headers.set("Cache-Control", "no-cache, must-revalidate");
+
+      // "관리자 페이지가 안 열리는" 문제의 진짜 원인: PaLhomepage(Vercel)의
+      // "/bbald_ai/(.*)" 리라이트가 "/bbald_ai/" 접두사를 뗀 채로 이 Worker에
+      // 넘겨준다(예: "/bbald_ai/admin.html" 요청이 이 Worker에는 그냥
+      // "/admin.html"로 들어옴). 그런데 Cloudflare Assets는 .html 확장자가 붙은
+      // 요청을 확장자 없는 주소로 308 리다이렉트하는 기본 동작(html_handling)이
+      // 있어서, 이 Worker가 "/admin" 같은 접두사 없는 Location을 돌려주게 된다.
+      // 그 응답이 프록시를 그대로 통과해 브라우저로 가면, 브라우저는 지금 보고
+      // 있는 주소(ramalok.kr/bbald_ai/...)가 아니라 ramalok.kr "루트" 기준으로
+      // 그 Location을 풀어버려서 엉뚱하게 ramalok.kr/admin 으로 이동하고, 그
+      // 주소는 메인 사이트 화이트리스트(middleware.js)에 없어서 404로 막힌다.
+      // → 여기서 Location에 "/bbald_ai" 접두사를 다시 붙여 돌려주면, 브라우저가
+      // 항상 올바르게 ramalok.kr/bbald_ai/... 로 리다이렉트되어 화이트리스트를
+      // 그대로 통과한다. (html_handling을 "none"으로 꺼서 리다이렉트 자체를
+      // 막는 방법은 "/" → index.html 자동 연결까지 같이 꺼버려서 사이트 전체가
+      // 404 나는 더 큰 문제를 만들었던 적이 있다 — 그래서 끄지 않고, 대신 여기서
+      // Location만 교정한다.)
+      if (assetRes.status >= 300 && assetRes.status < 400) {
+        const loc = headers.get("Location");
+        if (loc) {
+          try {
+            const locUrl = new URL(loc, url);
+            if (locUrl.origin === url.origin && !locUrl.pathname.startsWith("/bbald_ai")) {
+              locUrl.pathname = "/bbald_ai" + locUrl.pathname;
+              headers.set("Location", locUrl.pathname + locUrl.search + locUrl.hash);
+            }
+          } catch {
+            // Location이 이상한 형식이면 손대지 않고 그대로 통과시킨다.
+          }
+        }
+      }
+
       return new Response(assetRes.body, { status: assetRes.status, headers });
     }
 
