@@ -90,9 +90,9 @@
       if (user.photoURL) { img.src = user.photoURL; img.hidden = false; $("#userIni").hidden = true; }
       else { img.hidden = true; $("#userIni").hidden = false; }
       show("app");
-      selectTab(location.hash.slice(1) || "usage");
+      selectTab(location.hash.slice(1) || "dash");
       setStatus("ok", "연결됨");
-      await Promise.all([loadConfig(), loadList()]);
+      await Promise.all([loadConfig(), loadList(), loadStats(), loadBans(), loadShares(), loadAudit()]);
     } catch (err) {
       if (my !== runId) return;
       if (err.status === 403) {
@@ -132,7 +132,7 @@
   // ---------------- 탭 ----------------
   function selectTab(name) {
     const tabs = $$("#navTabs button").map((b) => b.dataset.tab);
-    if (!tabs.includes(name)) name = "usage";
+    if (!tabs.includes(name)) name = "dash";
     $$("#navTabs button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tab === name)));
     $$(".pane").forEach((p) => { p.hidden = p.dataset.pane !== name; });
     try { history.replaceState(null, "", `#${name}`); } catch {}
@@ -173,6 +173,7 @@
     $("#maintOn").checked = c.maintenance.enabled;
     $("#maintMsg").value = c.maintenance.message;
     renderCostPreview();
+    fillExtra(c);
   }
 
   function renderCostPreview() {
@@ -286,4 +287,213 @@
     } catch (err) { toast(err.message); }
   }
   $("#refreshListBtn").addEventListener("click", loadList);
+
+  // ---------------- 새 기능: 대시보드 / AI·학습 / 공지·보너스 / 운영 ----------------
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const split = (s) => String(s || "").split(/[\n,]+/).map((w) => w.trim()).filter(Boolean);
+  const fmtTime = (t) => (t ? new Date(t).toLocaleString("ko-KR", { hour12: false }) : "—");
+  let replies = [], notices = [];
+
+  function fillExtra(c) {
+    $("#statsEnabled").checked = c.statsEnabled !== false;
+    $("#providersChecks").innerHTML = Object.keys(PROVIDER_LABELS)
+      .map((p) => `<label class="chk"><input type="checkbox" id="pe_${p}" ${c.providersEnabled?.[p] !== false ? "checked" : ""}><span>${PROVIDER_LABELS[p]}</span></label>`).join("");
+    $("#limMsg").value = c.limits.maxMessageChars;
+    $("#limImg").value = c.limits.maxImages;
+    $("#limHist").value = c.limits.historyTurns;
+    $("#limTok").value = c.limits.maxTokens;
+    $("#promptExtra").value = c.prompt.extra;
+    $("#sunsetMode").checked = c.prompt.sunsetMode;
+    replies = (c.customReplies || []).map((r) => ({ keywords: [...r.keywords], replies: [...r.replies] }));
+    renderReplies();
+    $("#bannerOn").checked = c.banner.enabled;
+    $("#bannerLevel").value = c.banner.level;
+    $("#bannerLink").value = c.banner.link;
+    $("#bannerText").value = c.banner.text;
+    $("#textGreeting").value = c.texts.greeting;
+    $("#textPlaceholder").value = c.texts.placeholder;
+    $("#bonusSignup").value = c.bonus.signupPct;
+    const s = c.bonus.sticker;
+    $("#stEnabled").checked = s.enabled;
+    $("#stMin").value = s.minPct; $("#stMax").value = s.maxPct; $("#stCool").value = s.cooldownSec;
+    $("#stIntMin").value = s.minIntervalSec; $("#stIntMax").value = s.maxIntervalSec;
+    notices = (c.notices || []).map((n) => ({ ...n }));
+    renderNotices();
+  }
+
+  function renderReplies() {
+    $("#repliesList").innerHTML = replies.map((r, i) => `
+      <div class="sub" data-i="${i}">
+        <label class="fld"><span>키워드</span><textarea class="rk" rows="2">${esc(r.keywords.join(", "))}</textarea></label>
+        <label class="fld"><span>답변 (여러 개면 줄바꿈)</span><textarea class="rr" rows="3">${esc(r.replies.join("\n"))}</textarea></label>
+        <button type="button" class="btn btn-ghost btn-sm rdel">삭제</button>
+      </div>`).join("") || '<p class="note">아직 없어요.</p>';
+  }
+  function syncReplies() {
+    replies = $$("#repliesList .sub").map((el) => ({ keywords: split(el.querySelector(".rk").value), replies: split2(el.querySelector(".rr").value) })).filter((r) => r.keywords.length && r.replies.length);
+  }
+  const split2 = (s) => String(s || "").split("\n").map((w) => w.trim()).filter(Boolean); // 답변은 쉼표를 포함할 수 있으니 줄바꿈만
+  $("#addReplyBtn").addEventListener("click", () => { syncReplies(); replies.push({ keywords: [""], replies: [""] }); renderReplies(); });
+  $("#repliesList").addEventListener("click", (e) => {
+    const b = e.target.closest(".rdel"); if (!b) return;
+    const i = Number(b.closest(".sub").dataset.i);
+    $$("#repliesList .sub").forEach((el, k) => { if (k === i) el.remove(); });
+    syncReplies(); renderReplies();
+  });
+
+  function renderNotices() {
+    $("#noticesList").innerHTML = notices.map((n, i) => `
+      <div class="sub" data-i="${i}">
+        <div class="grid">
+          <label class="fld"><span>이모지</span><input class="ne" maxlength="4" value="${esc(n.emoji)}"></label>
+          <label class="fld"><span>제목</span><input class="nt" maxlength="80" value="${esc(n.title)}"></label>
+        </div>
+        <label class="fld"><span>내용</span><textarea class="nb" rows="3" maxlength="800">${esc(n.body)}</textarea></label>
+        <label class="chk"><input type="checkbox" class="nv" ${n.visible ? "checked" : ""}><span>보이기</span></label>
+        <label class="chk"><input type="checkbox" class="np" ${n.pinned ? "checked" : ""}><span>맨 위 고정</span></label>
+        <button type="button" class="btn btn-ghost btn-sm ndel">삭제</button>
+      </div>`).join("") || '<p class="note">공지가 없어요.</p>';
+  }
+  function syncNotices() {
+    notices = $$("#noticesList .sub").map((el, i) => ({
+      id: notices[i]?.id || `n${Date.now().toString(36)}${i}`,
+      emoji: el.querySelector(".ne").value, title: el.querySelector(".nt").value, body: el.querySelector(".nb").value,
+      visible: el.querySelector(".nv").checked, pinned: el.querySelector(".np").checked,
+    }));
+  }
+  $("#addNoticeBtn").addEventListener("click", () => { syncNotices(); notices.unshift({ id: `n${Date.now().toString(36)}`, emoji: "📢", title: "", body: "", visible: true, pinned: false }); renderNotices(); });
+  $("#noticesList").addEventListener("click", (e) => {
+    const b = e.target.closest(".ndel"); if (!b) return;
+    const i = Number(b.closest(".sub").dataset.i);
+    syncNotices(); notices.splice(i, 1); renderNotices();
+  });
+
+  $("#saveStatsBtn").addEventListener("click", (e) => save(e.currentTarget, () => ({ statsEnabled: $("#statsEnabled").checked }), "저장했어요"));
+  $("#saveAiBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
+    syncReplies();
+    return {
+      providersEnabled: Object.fromEntries(Object.keys(PROVIDER_LABELS).map((p) => [p, $(`#pe_${p}`).checked])),
+      limits: { maxMessageChars: numIn("#limMsg"), maxImages: numIn("#limImg"), historyTurns: numIn("#limHist"), maxTokens: numIn("#limTok") },
+      prompt: { extra: $("#promptExtra").value, sunsetMode: $("#sunsetMode").checked },
+      customReplies: replies,
+    };
+  }, "AI·학습 설정을 저장했어요"));
+  $("#saveContentBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
+    syncNotices();
+    return {
+      banner: { enabled: $("#bannerOn").checked, level: $("#bannerLevel").value, link: $("#bannerLink").value.trim(), text: $("#bannerText").value },
+      texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value },
+      bonus: { signupPct: numIn("#bonusSignup"), sticker: { enabled: $("#stEnabled").checked, minPct: numIn("#stMin"), maxPct: numIn("#stMax"), cooldownSec: numIn("#stCool"), minIntervalSec: numIn("#stIntMin"), maxIntervalSec: numIn("#stIntMax") } },
+      notices,
+    };
+  }, "공지·보너스를 저장했어요"));
+
+  // 통계
+  const STAT_ROWS = [["chats", "채팅"], ["uniq", "방문자"], ["uniqMember", "└ 회원"], ["uniqGuest", "└ 게스트"], ["spent", "쓴 크레딧"], ["images", "이미지"], ["errors", "오류"], ["outOfCredits", "크레딧 부족"], ["dailyLimitHit", "하루 제한"], ["filtered", "비속어 차단"], ["signups", "가입 보너스"], ["stickers", "스티커"]];
+  async function loadStats() {
+    try {
+      const { days } = await api("stats?days=7");
+      const keys = new Set(); days.forEach((d) => Object.keys(d).forEach((k) => keys.add(k)));
+      const prov = [...keys].filter((k) => k.startsWith("p:")).map((k) => [k, "AI·" + (PROVIDER_LABELS[k.slice(2)] || k.slice(2))]);
+      const tiers = [...keys].filter((k) => k.startsWith("t:")).map((k) => [k, "단계·" + (TIER_LABELS[k.slice(2)] || k.slice(2))]);
+      const errs = [...keys].filter((k) => k.startsWith("errk:")).map((k) => [k, "오류·" + k.slice(5)]);
+      const rows = [...STAT_ROWS, ...prov, ...tiers, ...errs];
+      $("#statsTable").innerHTML = `<thead><tr><th>항목</th>${days.map((d) => `<th>${d.date.slice(4, 6)}/${d.date.slice(6)}</th>`).join("")}<th>합계</th></tr></thead><tbody>${rows.map(([k, l]) => `<tr><td>${esc(l)}</td>${days.map((d) => `<td>${d[k] || 0}</td>`).join("")}<td><b>${days.reduce((a, d) => a + (d[k] || 0), 0)}</b></td></tr>`).join("")}</tbody>`;
+    } catch (err) { toast(err.message); }
+  }
+  $("#refreshStatsBtn").addEventListener("click", loadStats);
+
+  // 점검
+  $("#healthBtn").addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true; $("#healthOut").textContent = "점검 중...";
+    try {
+      const r = await api("health");
+      $("#healthOut").innerHTML = r.checks.map((c) => `<div class="hrow ${c.ok ? "ok" : "bad"}">${c.ok ? "✅" : "⚠️"} <b>${esc(c.name)}</b> — ${esc(c.detail)}</div>`).join("");
+    } catch (err) { $("#healthOut").textContent = err.message; }
+    btn.disabled = false;
+  });
+  $("#peekBtn").addEventListener("click", async () => {
+    try {
+      const r = await api("debug/access");
+      $("#peekOut").textContent = `host=${r.host} · x-forwarded-host=${r.xForwardedHost || "없음"} · 프록시 비밀헤더=${r.proxyHeaderPresent ? "있음" : "없음"} · 가드=${r.guardEnabled ? "켜짐(" + r.guardVia + ")" : "꺼짐"} · 환경=${r.platform}`;
+    } catch (err) { toast(err.message); }
+  });
+
+  // 사용자 관리
+  let opsId = null;
+  $("#opsLookupBtn").addEventListener("click", async () => {
+    const id = $("#opsIdentity").value.trim(); if (!id) return;
+    try {
+      const d = await api(`lookup?identity=${encodeURIComponent(id)}`);
+      opsId = d.identity;
+      const used = Object.entries(d.today || {}).map(([k, v]) => `${PROVIDER_LABELS[k] || k} ${typeof v === "object" ? (v.used + "/" + v.limit) : v}`).join(" · ");
+      $("#opsInfo").innerHTML = `<b>${esc(d.identity)}</b> (${d.isGuest ? "게스트" : "회원"}) — 크레딧 ${d.credits}/${d.cap}${d.refill?.nextAt ? ` · 다음 충전 ${fmtTime(d.refill.nextAt)}` : ""}<br>오늘 사용: ${esc(used) || "없음"}<br>${d.ban ? `🚫 차단 중 (${esc(d.ban.reason || "사유 없음")}, ${d.ban.until ? fmtTime(d.ban.until) + "까지" : "영구"})` : "차단 안 됨"}`;
+      $("#opsActions").hidden = false; $("#banRow").hidden = false;
+    } catch (err) { toast(err.message); }
+  });
+  async function reset(what) { if (!opsId) return; try { const r = await post("identity/reset", { identity: opsId, what }); toast(r.detail); $("#opsLookupBtn").click(); loadAudit(); } catch (err) { toast(err.message); } }
+  $("#rstUsageBtn").addEventListener("click", () => reset("usage"));
+  $("#rstRefillBtn").addEventListener("click", () => reset("refill"));
+  $("#banBtn").addEventListener("click", async () => {
+    if (!opsId || !confirm(`${opsId} 을(를) 차단할까요?`)) return;
+    try { await post("bans/add", { identity: opsId, reason: $("#banReason").value, days: Number($("#banDays").value) || 0 }); toast("차단했어요"); $("#opsLookupBtn").click(); loadBans(); loadAudit(); } catch (err) { toast(err.message); }
+  });
+
+  async function loadBans() {
+    try {
+      const { items } = await api("bans");
+      $("#bansBody").innerHTML = items.map((b) => `<tr><td>${esc(b.identity)}</td><td>${esc(b.reason)}</td><td>${b.until ? fmtTime(b.until) : "영구"}</td><td><button class="btn btn-ghost btn-sm unban" data-id="${esc(b.identity)}">해제</button></td></tr>`).join("") || '<tr><td colspan="4">차단된 사용자가 없어요.</td></tr>';
+    } catch (err) { toast(err.message); }
+  }
+  $("#bansBody").addEventListener("click", async (e) => {
+    const b = e.target.closest(".unban"); if (!b) return;
+    try { await post("bans/remove", { identity: b.dataset.id }); toast("해제했어요"); loadBans(); loadAudit(); } catch (err) { toast(err.message); }
+  });
+  $("#refreshBansBtn").addEventListener("click", loadBans);
+
+  async function loadShares() {
+    try {
+      const { items } = await api("shares");
+      $("#sharesBody").innerHTML = items.map((s) => `<tr><td>${esc(s.title)}</td><td>${s.visibility === "public" ? "전체 공개" : "링크"}</td><td>${esc(s.preview)}</td><td><button class="btn btn-ghost btn-sm unshare" data-id="${esc(s.shareId)}">공유 해제</button></td></tr>`).join("") || '<tr><td colspan="4">공유된 대화가 없어요.</td></tr>';
+    } catch (err) { toast(err.message); }
+  }
+  $("#sharesBody").addEventListener("click", async (e) => {
+    const b = e.target.closest(".unshare"); if (!b || !confirm("이 대화 공유를 해제할까요?")) return;
+    try { await post("shares/revoke", { shareId: b.dataset.id }); toast("공유를 해제했어요"); loadShares(); loadAudit(); } catch (err) { toast(err.message); }
+  });
+  $("#refreshSharesBtn").addEventListener("click", loadShares);
+
+  $("#ftBtn").addEventListener("click", async () => {
+    try {
+      const r = await post("filter-test", { text: $("#ftText").value });
+      $("#ftOut").innerHTML = `${r.enabled ? "" : "(필터가 꺼져 있어요) "}${r.blocked ? `🚫 걸림: <b>${esc(r.blocked)}</b>` : "✅ 통과"}<br>가림 결과: ${esc(r.masked)}`;
+    } catch (err) { toast(err.message); }
+  });
+
+  $("#backupBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = `bbald-config-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href);
+  });
+  $("#restoreFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    try {
+      const patch = JSON.parse(await f.text());
+      if (!confirm("현재 설정을 이 파일 내용으로 덮어쓸까요?")) return;
+      fillForms(await post("config", patch)); toast("복원했어요"); loadAudit();
+    } catch (err) { toast("복원하지 못했어요: " + err.message); }
+  });
+  $("#resetCfgBtn").addEventListener("click", async () => {
+    if (!confirm("모든 설정을 기본값으로 되돌릴까요? 되돌릴 수 없어요.")) return;
+    try { fillForms(await post("config/reset", {})); toast("기본값으로 초기화했어요"); loadAudit(); } catch (err) { toast(err.message); }
+  });
+
+  async function loadAudit() {
+    try {
+      const { items } = await api("audit");
+      $("#auditBody").innerHTML = items.slice(0, 100).map((a) => `<tr><td>${fmtTime(a.at)}</td><td>${esc(a.by)}</td><td>${esc(a.action)}</td><td>${esc(a.detail)}</td></tr>`).join("") || '<tr><td colspan="4">기록이 없어요.</td></tr>';
+    } catch (err) { toast(err.message); }
+  }
+  $("#refreshAuditBtn").addEventListener("click", loadAudit);
 })();

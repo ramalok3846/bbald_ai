@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "빨드 AI - 멍청하고 귀여운 빨간 공룡 인형 캐릭터 챗봇 (Cloudflare Workers)",
+  "description": "빨드 AI - 멍청하고 귀여운 빨간 공룡 인형 캐릭터 챗봇 (Cloudflare Workers / Vercel 둘 다 배포 가능)",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "check": "node --check src/worker.js && node --check src/guard.js && node --check src/platform.js"
   },
   "dependencies": {
     "suncalc": "^1.9.0"

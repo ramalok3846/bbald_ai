@@ -139,7 +139,64 @@
       }
       buildCatalog();
       rebuildModelOptions();
+      applyPublicExtras();
     } catch {}
+  }
+
+  // 관리자가 정한 배너/공지/문구/AI 사용 여부/제한값을 화면에 반영한다.
+  function applyPublicExtras() {
+    const mainEl = document.querySelector(".main");
+    let banner = document.getElementById("siteBanner");
+    const bc = pubCfg.banner;
+    if (bc?.enabled && bc.text) {
+      if (!banner) {
+        banner = document.createElement("div");
+        banner.id = "siteBanner";
+        mainEl.insertBefore(banner, mainEl.firstChild);
+      }
+      banner.className = `site-banner ${bc.level === "warn" ? "warn" : "info"}`;
+      banner.textContent = bc.text;
+      if (bc.link) {
+        const a = document.createElement("a");
+        a.href = bc.link; a.target = "_blank"; a.rel = "noopener"; a.textContent = "자세히 ›";
+        banner.append(" ", a);
+      }
+      banner.hidden = false;
+    } else if (banner) banner.hidden = true;
+
+    if (Array.isArray(pubCfg.notices) && pubCfg.notices.length) {
+      const body = document.querySelector("#noticesBackdrop .notices-body");
+      if (body) {
+        body.innerHTML = "";
+        for (const n of pubCfg.notices) {
+          const art = document.createElement("article");
+          art.className = "notice-card";
+          const h = document.createElement("h3");
+          h.textContent = `${n.emoji ? n.emoji + " " : ""}${n.pinned ? "📌 " : ""}${n.title}`;
+          const pEl = document.createElement("p");
+          pEl.textContent = n.body;
+          art.append(h, pEl);
+          body.appendChild(art);
+        }
+      }
+    }
+    if (pubCfg.texts?.placeholder) input.placeholder = pubCfg.texts.placeholder;
+    if (pubCfg.limits?.maxMessageChars) input.maxLength = pubCfg.limits.maxMessageChars;
+
+    for (const opt of providerSelect.options) {
+      const off = pubCfg.providersEnabled?.[opt.value] === false;
+      opt.disabled = off;
+      opt.hidden = off;
+    }
+    if (providerSelect.selectedOptions[0]?.disabled) {
+      const first = Array.from(providerSelect.options).find((o) => !o.disabled);
+      if (first) { providerSelect.value = first.value; rebuildModelOptions(); }
+    }
+    // 아직 대화를 시작하지 않았다면 바뀐 인사말로 다시 그린다.
+    if (!currentMessages.length && !shareParam && chatEl.children.length === 1 && !pendingConvParam) {
+      chatEl.innerHTML = "";
+      addGreeting();
+    }
   }
   function isMemberOnlyModel(provider, model) {
     return MODEL_CATALOG[provider]?.find((m) => m.value === model)?.memberOnly === true;
@@ -826,7 +883,8 @@
   }
 
   function addGreeting() {
-    addMessage("assistant", "안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)", { skipStore: true });
+    const text = pubCfg.texts?.greeting || "안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)";
+    addMessage("assistant", text, { skipStore: true });
   }
 
   // ---------------- 생각 중 표시 ----------------
@@ -895,6 +953,11 @@
     });
   }
   function addAttachment(dataUrl, mimeType) {
+    const maxImg = pubCfg.limits?.maxImages ?? 4;
+    if (pendingAttachments.length >= maxImg) {
+      addMessage("assistant", `이미지는 한 번에 ${maxImg}장까지만 붙일 수 있다능!`, { extraClass: "snack", skipStore: true });
+      return;
+    }
     pendingAttachments.push({ dataUrl, mimeType });
     renderAttachPreview();
   }
@@ -1204,7 +1267,10 @@
   const stickerBadge = stickerBtn.querySelector(".sticker-badge");
   let stickerTimer = null;
   function scheduleSticker() {
-    const delay = 90000 + Math.random() * 150000;
+    const sb = pubCfg.stickerBonus || {};
+    const min = (sb.minIntervalSec || 90) * 1000;
+    const max = Math.max(min, (sb.maxIntervalSec || 240) * 1000);
+    const delay = min + Math.random() * (max - min);
     stickerTimer = setTimeout(showSticker, delay);
   }
   function showSticker() {

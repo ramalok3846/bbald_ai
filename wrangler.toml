@@ -31,3 +31,10 @@ id = "b73742bb2a6d4515b648550622f3550f"
 # [[routes]]
 # pattern = "bbald.ramalok.kr/*"
 # zone_name = "ramalok.kr"
+
+# ── 원본 주소(bbald-ai.ramalok.workers.dev) 없애기 ─────────────────────────
+# 아래 두 줄은 "정식 연결(커스텀 도메인/라우트)을 먼저 만든 다음에" 켜세요.
+# 먼저 켜면 지금 ramalok.kr/bbald_ai 가 연결해 둔 workers.dev 주소가 사라져서 사이트가 멈춥니다.
+# 자세한 순서는 DEPLOY.md 참고.
+# workers_dev = false
+# preview_urls = false

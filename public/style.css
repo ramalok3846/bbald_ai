@@ -934,3 +934,10 @@ html, body { height: 100%; }
 }
 #shareLink { width: 100%; }
 @media (max-width: 720px) { .shared-banner { padding: 10px 14px; } }
+
+/* ---------- 관리자가 설정하는 맨 위 배너 ---------- */
+.site-banner { padding: 9px 24px; font-size: 0.85rem; font-weight: 700; text-align: center; }
+.site-banner.info { background: var(--bg-deep); color: var(--purple-deep); border-bottom: 1px solid var(--border); }
+.site-banner.warn { background: #fff4e6; color: #8a5a00; border-bottom: 1px solid #f0b429; }
+.site-banner a { color: inherit; text-decoration: underline; margin-left: 6px; }
+@media (max-width: 720px) { .site-banner { padding: 8px 14px; } }

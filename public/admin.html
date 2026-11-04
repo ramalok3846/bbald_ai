@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=23" />
+<link rel="stylesheet" href="admin.css?v=24" />
 </head>
 <body>
 
@@ -98,17 +98,141 @@
   </header>
 
   <nav class="navtabs" id="navTabs" aria-label="관리 영역">
-    <button type="button" data-tab="usage" aria-pressed="true">사용량 · 회원</button>
+    <button type="button" data-tab="dash" aria-pressed="true">대시보드</button>
+    <button type="button" data-tab="usage" aria-pressed="false">사용량 · 회원</button>
     <button type="button" data-tab="credits" aria-pressed="false">크레딧 · 비용</button>
     <button type="button" data-tab="member" aria-pressed="false">멤버십</button>
     <button type="button" data-tab="chat" aria-pressed="false">대기 · 재충전</button>
     <button type="button" data-tab="filter" aria-pressed="false">비속어 필터</button>
+    <button type="button" data-tab="ai" aria-pressed="false">AI · 학습</button>
+    <button type="button" data-tab="content" aria-pressed="false">공지 · 보너스</button>
     <button type="button" data-tab="share" aria-pressed="false">공유 · 점검</button>
+    <button type="button" data-tab="ops" aria-pressed="false">운영 · 시스템</button>
   </nav>
 
   <main class="content">
+    <!-- 대시보드 -->
+    <section class="pane" data-pane="dash">
+      <div class="card">
+        <div class="card-head"><h2>최근 7일 현황</h2><button class="btn btn-ghost btn-sm" id="refreshStatsBtn" type="button">새로고침</button></div>
+        <p class="note">대략적인 통계예요(동시에 많이 몰리면 몇 건은 빠질 수 있어요). KST 기준 하루 단위.</p>
+        <div class="table-wrap"><table id="statsTable"></table></div>
+        <label class="chk"><input type="checkbox" id="statsEnabled"><span>통계 기록 켜기 (Cloudflare KV 무료 플랜은 하루 쓰기 1,000회 제한이 있어서, 사용자가 많으면 꺼 두세요)</span></label>
+        <div class="actions"><button class="btn btn-primary" id="saveStatsBtn" type="button">저장</button></div>
+      </div>
+    </section>
+
+    <!-- AI · 학습 -->
+    <section class="pane" data-pane="ai" hidden>
+      <div class="card">
+        <h2>AI 켜기 / 끄기</h2>
+        <div class="checks" id="providersChecks"></div>
+        <h3>입력 제한</h3>
+        <div class="grid">
+          <label class="fld"><span>메시지 최대 글자수</span><input type="number" min="50" id="limMsg"></label>
+          <label class="fld"><span>이미지 최대 장수</span><input type="number" min="0" max="10" id="limImg"></label>
+          <label class="fld"><span>기억하는 대화 턴 수</span><input type="number" min="1" max="30" id="limHist"></label>
+          <label class="fld"><span>답변 최대 토큰</span><input type="number" min="50" id="limTok"></label>
+        </div>
+      </div>
+      <div class="card">
+        <h2>빨드 성격 추가 지시</h2>
+        <label class="fld"><span>AI(Claude·ChatGPT·Gemini·Cloudflare)에게 항상 덧붙일 말</span><textarea id="promptExtra" rows="4" maxlength="1500" placeholder="예: 숙제는 정답만 말하지 말고 힌트를 먼저 줘."></textarea></label>
+        <label class="chk"><input type="checkbox" id="sunsetMode"><span>대화가 길어지면 빨드가 점점 졸려하는 "해질녘 모드" 켜기</span></label>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>빨드 기본 학습 (맞춤 답변)</h2><button class="btn btn-ghost btn-sm" id="addReplyBtn" type="button">+ 추가</button></div>
+        <p class="note">키워드가 들어 있으면 이 답변이 먼저 나가요(크레딧 안 씀). 키워드·답변 모두 쉼표나 줄바꿈으로 여러 개 넣을 수 있고, 답변은 그중 하나를 무작위로 골라요.</p>
+        <div id="repliesList"></div>
+      </div>
+      <div class="actions"><button class="btn btn-primary" id="saveAiBtn" type="button">저장</button></div>
+    </section>
+
+    <!-- 공지 · 보너스 -->
+    <section class="pane" data-pane="content" hidden>
+      <div class="card">
+        <h2>상단 배너</h2>
+        <label class="chk"><input type="checkbox" id="bannerOn"><span>배너 보이기</span></label>
+        <div class="grid">
+          <label class="fld"><span>종류</span><select id="bannerLevel"><option value="info">안내</option><option value="warn">경고</option></select></label>
+          <label class="fld"><span>링크 (선택)</span><input type="text" id="bannerLink" placeholder="https://..."></label>
+        </div>
+        <label class="fld"><span>배너 문구</span><input type="text" id="bannerText" maxlength="200"></label>
+      </div>
+      <div class="card">
+        <h2>문구</h2>
+        <label class="fld"><span>첫 인사말 (비우면 기본)</span><textarea id="textGreeting" rows="2" maxlength="300"></textarea></label>
+        <label class="fld"><span>입력창 안내문 (비우면 기본)</span><input type="text" id="textPlaceholder" maxlength="100"></label>
+      </div>
+      <div class="card">
+        <h2>보너스 크레딧</h2>
+        <div class="grid">
+          <label class="fld"><span>가입(로그인) 보너스 (기본 크레딧의 %)</span><input type="number" min="0" max="500" id="bonusSignup"></label>
+          <label class="fld"><span>스티커 최소 %</span><input type="number" min="1" max="100" id="stMin"></label>
+          <label class="fld"><span>스티커 최대 %</span><input type="number" min="1" max="100" id="stMax"></label>
+          <label class="fld"><span>스티커 쿨다운 (초)</span><input type="number" min="1" id="stCool"></label>
+          <label class="fld"><span>스티커 등장 최소 간격 (초)</span><input type="number" min="10" id="stIntMin"></label>
+          <label class="fld"><span>스티커 등장 최대 간격 (초)</span><input type="number" min="10" id="stIntMax"></label>
+        </div>
+        <label class="chk"><input type="checkbox" id="stEnabled"><span>떠다니는 스티커 보너스 켜기</span></label>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>공지사항</h2><button class="btn btn-ghost btn-sm" id="addNoticeBtn" type="button">+ 추가</button></div>
+        <div id="noticesList"></div>
+      </div>
+      <div class="actions"><button class="btn btn-primary" id="saveContentBtn" type="button">저장</button></div>
+    </section>
+
+    <!-- 운영 · 시스템 -->
+    <section class="pane" data-pane="ops" hidden>
+      <div class="card">
+        <div class="card-head"><h2>시스템 점검</h2><button class="btn btn-ghost btn-sm" id="healthBtn" type="button">점검 실행</button></div>
+        <div id="healthOut" class="note">버튼을 눌러 저장소·AI·요금제 연동·원본 주소 차단 상태를 확인해요.</div>
+        <div class="row"><button class="btn btn-ghost btn-sm" id="peekBtn" type="button">프록시 헤더 확인</button><span id="peekOut" class="note"></span></div>
+      </div>
+      <div class="card">
+        <h2>사용자 관리</h2>
+        <p class="note">신원을 조회하면 사용량 초기화·차단을 할 수 있어요. (신원 입력은 "사용량 · 회원" 탭의 조회칸과 같아요)</p>
+        <div class="row"><input type="text" id="opsIdentity" placeholder="uid:… / guest:… / ip:…"><button class="btn btn-ghost" id="opsLookupBtn" type="button">조회</button></div>
+        <div id="opsInfo" class="note"></div>
+        <div class="row" id="opsActions" hidden>
+          <button class="btn btn-ghost btn-sm" id="rstUsageBtn" type="button">오늘 사용량 초기화</button>
+          <button class="btn btn-ghost btn-sm" id="rstRefillBtn" type="button">재충전 기록 초기화</button>
+        </div>
+        <div class="row" id="banRow" hidden>
+          <input type="text" id="banReason" placeholder="차단 사유" maxlength="100">
+          <input type="number" id="banDays" class="w120" placeholder="일수(0=영구)" min="0">
+          <button class="btn btn-primary btn-sm" id="banBtn" type="button">차단</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>차단 목록</h2><button class="btn btn-ghost btn-sm" id="refreshBansBtn" type="button">새로고침</button></div>
+        <div class="table-wrap"><table><thead><tr><th>신원</th><th>사유</th><th>만료</th><th></th></tr></thead><tbody id="bansBody"></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>공유된 대화</h2><button class="btn btn-ghost btn-sm" id="refreshSharesBtn" type="button">새로고침</button></div>
+        <div class="table-wrap"><table><thead><tr><th>제목</th><th>범위</th><th>미리보기</th><th></th></tr></thead><tbody id="sharesBody"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>비속어 필터 테스트</h2>
+        <div class="row"><input type="text" id="ftText" placeholder="검사해 볼 문장"><button class="btn btn-ghost" id="ftBtn" type="button">검사</button></div>
+        <div id="ftOut" class="note"></div>
+      </div>
+      <div class="card">
+        <h2>설정 백업 · 복원</h2>
+        <div class="row">
+          <button class="btn btn-ghost" id="backupBtn" type="button">설정 JSON 내려받기</button>
+          <label class="btn btn-ghost" for="restoreFile">JSON으로 복원</label><input type="file" id="restoreFile" accept="application/json" hidden>
+          <button class="btn btn-ghost" id="resetCfgBtn" type="button">전체 기본값으로 초기화</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>관리 기록</h2><button class="btn btn-ghost btn-sm" id="refreshAuditBtn" type="button">새로고침</button></div>
+        <div class="table-wrap"><table><thead><tr><th>시각</th><th>관리자</th><th>작업</th><th>내용</th></tr></thead><tbody id="auditBody"></tbody></table></div>
+      </div>
+    </section>
     <!-- 사용량 · 회원 -->
-    <section class="pane" data-pane="usage">
+    <section class="pane" data-pane="usage" hidden>
       <div class="card">
         <h2>회원 / 게스트 크레딧 조회 · 조정</h2>
         <p class="note">신원 형식: <code>uid:실제uid</code> (로그인 회원), <code>guest:브라우저ID</code> 또는 <code>ip:1.2.3.4</code> (게스트). 아래 목록에서 눌러 넣을 수 있어요. 여기서 바꾸는 건 빨드 기본 크레딧이고, 통합 크레딧·요금제는 메인 관리자에서 관리해요.</p>
@@ -226,10 +350,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=23"></script>
+<script src="firebase-config.js?v=24"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=23"></script>
-<script type="module" src="admin.js?v=23"></script>
+<script type="module" src="auth.js?v=24"></script>
+<script type="module" src="admin.js?v=24"></script>
 </body>
 </html>

@@ -165,7 +165,7 @@ function dynamicAnswer(kind, now, rand) {
 }
 
 // history: [{role, content}] — 이름 기억, 직전 답변 반복 방지, 이어지는 대화에 사용.
-export function brainReply(userText, { history = [], rand = Math.random, now = new Date() } = {}) {
+export function brainReply(userText, { history = [], custom = [], rand = Math.random, now = new Date() } = {}) {
   const text = String(userText || "").trim();
   const lastBot = [...history].reverse().find((h) => h.role === "assistant")?.content || "";
 
@@ -181,6 +181,12 @@ export function brainReply(userText, { history = [], rand = Math.random, now = n
       if (m) return `${m[1]}! 맞지?? 빨드 기억력 좋다능 으쓱 🦕`;
     }
     return "음... 아직 이름 안 알려줬다능! '내 이름은 OO야' 하고 알려주면 기억할게다능!";
+  }
+
+  // 1.5) 관리자가 가르친 답 (키워드가 들어 있으면 기본 지식보다 먼저)
+  const flat = text.toLowerCase().replace(/\s+/g, "");
+  for (const c of custom) {
+    if (c.keywords.some((k) => flat.includes(String(k).toLowerCase().replace(/\s+/g, "")))) return pick(c.replies, rand, lastBot);
   }
 
   // 2) 지식 사전

@@ -42,6 +42,31 @@ const DEFAULTS = {
   // 욕설·비속어 필터. extraWords는 관리자가 더하는 금지어, allowWords는 기본 목록에서 빼는 단어.
   filter: { enabled: true, action: "block", extraWords: [], allowWords: [] }, // action: block(막기) | mask(가리기)
 
+  // AI(provider)별 사용 여부. 꺼진 AI는 선택창에서 빠지고 서버도 거절한다.
+  providersEnabled: { builtin: true, cloudflare: true, anthropic: true, openai: true, gemini: true },
+
+  // 요청 제한: 메시지 길이, 한 번에 첨부할 이미지 수, AI에 보내는 이전 대화 개수, 답변 최대 길이(토큰)
+  limits: { maxMessageChars: 2000, maxImages: 4, historyTurns: 10, maxTokens: 400 },
+
+  // 프롬프트: extra는 빨드 말투 지침 뒤에 덧붙이는 관리자 지침, sunsetMode가 false면 노을(똑똑해지는 시간) 효과 없이 항상 멍청 모드
+  prompt: { extra: "", sunsetMode: true },
+
+  // 빨드 내장 두뇌 학습: keywords 중 하나라도 들어 있으면 replies 중 하나로 답한다 (기본 지식 사전보다 먼저)
+  customReplies: [],
+
+  // 보너스: 가입 보너스(기본 크레딧의 몇 %), 랜덤 빨드 스티커
+  bonus: {
+    signupPct: 100,
+    sticker: { enabled: true, minPct: 10, maxPct: 30, cooldownSec: 20, minIntervalSec: 90, maxIntervalSec: 240 },
+  },
+
+  // 공지사항(설정 창 옆 "공지사항"에 보임), 맨 위 배너, 문구
+  notices: [],
+  banner: { enabled: false, text: "", level: "info", link: "" },
+  texts: { greeting: "", placeholder: "" },
+
+  statsEnabled: true, // 일별 통계 수집 (KV 쓰기가 늘어나므로 끌 수 있다)
+
   // 대화 공유. publicAllowed가 false면 "전체 공개"는 못 고르고 링크 공유까지만 된다.
   sharing: { enabled: true, publicAllowed: true },
 };
@@ -60,6 +85,31 @@ function numMap(patch, base, keys, min, max) {
   const out = {};
   for (const k of keys) out[k] = num(patch?.[k], min, max, base[k]);
   return out;
+}
+
+function cleanCustomReplies(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((r) => ({
+      keywords: words(r?.keywords, []).slice(0, 20),
+      replies: Array.isArray(r?.replies) ? r.replies.map((x) => String(x).trim().slice(0, 400)).filter(Boolean).slice(0, 10) : [],
+    }))
+    .filter((r) => r.keywords.length && r.replies.length)
+    .slice(0, 200);
+}
+function cleanNotices(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((n, i) => ({
+      id: String(n?.id || `n${i}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20) || `n${i}`,
+      title: String(n?.title || "").trim().slice(0, 60),
+      body: String(n?.body || "").trim().slice(0, 600),
+      emoji: String(n?.emoji || "").trim().slice(0, 4),
+      visible: n?.visible !== false,
+      pinned: n?.pinned === true,
+    }))
+    .filter((n) => n.title || n.body)
+    .slice(0, 20);
 }
 
 function merge(p = {}) {
@@ -94,6 +144,47 @@ function merge(p = {}) {
     sharing: {
       enabled: bool(p.sharing?.enabled, d.sharing.enabled),
       publicAllowed: bool(p.sharing?.publicAllowed, d.sharing.publicAllowed),
+    },
+    statsEnabled: bool(p.statsEnabled, d.statsEnabled),
+    providersEnabled: Object.fromEntries(PROVIDERS.map((k) => [k, bool(p.providersEnabled?.[k], d.providersEnabled[k])])),
+    limits: {
+      maxMessageChars: Math.round(num(p.limits?.maxMessageChars, 10, 20000, d.limits.maxMessageChars)),
+      maxImages: Math.round(num(p.limits?.maxImages, 0, 10, d.limits.maxImages)),
+      historyTurns: Math.round(num(p.limits?.historyTurns, 0, 40, d.limits.historyTurns)),
+      maxTokens: Math.round(num(p.limits?.maxTokens, 50, 4000, d.limits.maxTokens)),
+    },
+    prompt: {
+      extra: typeof p.prompt?.extra === "string" ? p.prompt.extra.slice(0, 1500) : d.prompt.extra,
+      sunsetMode: bool(p.prompt?.sunsetMode, d.prompt.sunsetMode),
+    },
+    customReplies: cleanCustomReplies(p.customReplies),
+    bonus: {
+      signupPct: num(p.bonus?.signupPct, 0, 1000, d.bonus.signupPct),
+      sticker: {
+        enabled: bool(p.bonus?.sticker?.enabled, d.bonus.sticker.enabled),
+        minPct: num(p.bonus?.sticker?.minPct, 0, 1000, d.bonus.sticker.minPct),
+        maxPct: Math.max(
+          num(p.bonus?.sticker?.minPct, 0, 1000, d.bonus.sticker.minPct),
+          num(p.bonus?.sticker?.maxPct, 0, 1000, d.bonus.sticker.maxPct)
+        ),
+        cooldownSec: num(p.bonus?.sticker?.cooldownSec, 0, 86400, d.bonus.sticker.cooldownSec),
+        minIntervalSec: num(p.bonus?.sticker?.minIntervalSec, 5, 86400, d.bonus.sticker.minIntervalSec),
+        maxIntervalSec: Math.max(
+          num(p.bonus?.sticker?.minIntervalSec, 5, 86400, d.bonus.sticker.minIntervalSec),
+          num(p.bonus?.sticker?.maxIntervalSec, 5, 86400, d.bonus.sticker.maxIntervalSec)
+        ),
+      },
+    },
+    notices: cleanNotices(p.notices),
+    banner: {
+      enabled: bool(p.banner?.enabled, d.banner.enabled),
+      text: typeof p.banner?.text === "string" ? p.banner.text.slice(0, 200) : d.banner.text,
+      level: ["info", "warn"].includes(p.banner?.level) ? p.banner.level : "info",
+      link: typeof p.banner?.link === "string" && /^https?:\/\//.test(p.banner.link) ? p.banner.link.slice(0, 300) : "",
+    },
+    texts: {
+      greeting: typeof p.texts?.greeting === "string" ? p.texts.greeting.slice(0, 300) : d.texts.greeting,
+      placeholder: typeof p.texts?.placeholder === "string" ? p.texts.placeholder.slice(0, 100) : d.texts.placeholder,
     },
   };
 }
@@ -130,10 +221,23 @@ export function publicConfig(config) {
     memberOnlyTiers: config.memberOnlyTiers,
     guestImages: config.guestImages,
     sharing: config.sharing,
+    providersEnabled: config.providersEnabled,
+    limits: { maxMessageChars: config.limits.maxMessageChars, maxImages: config.limits.maxImages },
+    stickerBonus: config.bonus.sticker,
+    notices: config.notices.filter((n) => n.visible).sort((a, b) => Number(b.pinned) - Number(a.pinned)),
+    banner: config.banner,
+    texts: config.texts,
     refillIntervalMin: config.refillIntervalMin,
     refillMaxPer24h: config.refillMaxPer24h,
     maintenance: config.maintenance,
   };
+}
+
+// 설정을 기본값으로 되돌린다.
+export async function resetConfig(env) {
+  if (!env.RATE_LIMIT_KV) throw new Error("RATE_LIMIT_KV가 설정되어 있지 않아서 설정을 초기화할 수 없다능");
+  await env.RATE_LIMIT_KV.delete(CONFIG_KEY);
+  return merge({});
 }
 
 export const CONFIG_DEFAULTS = DEFAULTS;

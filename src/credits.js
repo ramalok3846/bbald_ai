@@ -75,19 +75,22 @@ export async function spendCredits(env, identity, cost, startingCredits = STARTI
 // "처음 보는 신원이라 KV에 아직 값이 없을 때" 올바른 cap으로 초기화되고,
 // 보너스도 cap을 넘지 않게(min으로 clamp) 더해져서 "135 / 100"처럼 잔액이
 // 최대치보다 커지는 이상한 표시가 안 생긴다.
-export async function claimSignupBonus(env, identity, cap = STARTING_CREDITS) {
+export async function claimSignupBonus(env, identity, cap = STARTING_CREDITS, pct = SIGNUP_BONUS_RATIO * 100) {
   if (!env.RATE_LIMIT_KV) return { granted: false, balance: cap };
   const already = await env.RATE_LIMIT_KV.get(signupBonusKey(identity));
   if (already) return { granted: false, balance: await getBalance(env, identity, cap) };
   await env.RATE_LIMIT_KV.put(signupBonusKey(identity), "1");
   const current = await getBalance(env, identity, cap);
-  const amount = Math.max(1, Math.round(cap * SIGNUP_BONUS_RATIO));
+  const amount = Math.max(1, Math.round((cap * pct) / 100));
   const next = await setBalance(env, identity, Math.min(cap, current + amount));
   return { granted: true, amount, balance: next };
 }
 
-export async function claimStickerBonus(env, identity, cap = STARTING_CREDITS, rand = Math.random) {
-  const amount = Math.max(1, Math.round(cap * (STICKER_MIN_BONUS_RATIO + rand() * (STICKER_MAX_BONUS_RATIO - STICKER_MIN_BONUS_RATIO))));
+export async function claimStickerBonus(env, identity, cap = STARTING_CREDITS, opts = {}, rand = Math.random) {
+  const minR = (opts.minPct ?? STICKER_MIN_BONUS_RATIO * 100) / 100;
+  const maxR = Math.max(minR, (opts.maxPct ?? STICKER_MAX_BONUS_RATIO * 100) / 100);
+  const cooldownSec = opts.cooldownSec ?? STICKER_COOLDOWN_MS / 1000;
+  const amount = Math.max(1, Math.round(cap * (minR + rand() * (maxR - minR))));
   if (!env.RATE_LIMIT_KV) {
     return { granted: true, amount, balance: cap };
   }
@@ -95,7 +98,7 @@ export async function claimStickerBonus(env, identity, cap = STARTING_CREDITS, r
   const onCooldown = await env.RATE_LIMIT_KV.get(cooldownKey);
   if (onCooldown) return { granted: false, balance: await getBalance(env, identity, cap) };
 
-  await env.RATE_LIMIT_KV.put(cooldownKey, "1", { expirationTtl: Math.ceil(STICKER_COOLDOWN_MS / 1000) });
+  await env.RATE_LIMIT_KV.put(cooldownKey, "1", { expirationTtl: Math.max(60, Math.ceil(cooldownSec)) });
   const current = await getBalance(env, identity, cap);
   const next = await setBalance(env, identity, Math.min(cap, current + amount));
   return { granted: true, amount, balance: next };

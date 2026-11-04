@@ -140,3 +140,9 @@ table.mini td:first-child, table.mini th:first-child { font-weight: 700; }
   .card { padding: 16px; }
   .content { padding: 14px 12px 90px; }
 }
+
+.sub{border:1px dashed var(--line,#8884);border-radius:12px;padding:12px;margin:10px 0;display:grid;gap:8px}
+.hrow{padding:6px 0;line-height:1.5;word-break:break-word}
+.hrow.bad{color:#c2410c}
+label.btn{cursor:pointer;display:inline-flex;align-items:center}
+textarea{width:100%;box-sizing:border-box;font:inherit}

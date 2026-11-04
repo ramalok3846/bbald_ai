@@ -6,7 +6,7 @@ import {
   maybeSnackLine,
   builtinReply,
 } from "./bbald.js";
-import { callAnthropic, callOpenAI, callGemini, callCloudflareAI } from "./providers.js";
+import { callAnthropic, callOpenAI, callGemini, callCloudflareAI, ProviderError, httpStatusFor } from "./providers.js";
 import { checkAndConsumeDailyLimit, getUsageSummary } from "./rate-limit.js";
 import {
   resolveIdentity,
@@ -20,8 +20,24 @@ import {
   adminSetBalance,
   listCreditIdentities,
 } from "./credits.js";
-import { getConfig, setConfig, publicConfig } from "./config.js";
+import { getConfig, setConfig, resetConfig, publicConfig } from "./config.js";
+import { checkAccess, blockedResponse } from "./guard.js";
 import { findBadWord, maskBadWords } from "./filter.js";
+import {
+  track,
+  getStats,
+  getBan,
+  addBan,
+  removeBan,
+  listBans,
+  logAudit,
+  listAudit,
+  listShares,
+  revokeShare,
+  resetTodayUsage,
+  resetRefillState,
+  runHealth,
+} from "./ops.js";
 import { requireAdmin } from "./admin.js";
 import { verifyIdToken } from "./firebase-verify.js";
 import {
@@ -164,15 +180,15 @@ function json(data, init = {}) {
 // 절대 JSON이 아닌 응답(=플랫폼 기본 에러 페이지)이 나가면 안 된다. 그게 나가면
 // 클라이언트의 res.json()이 실패해서 "인터넷이 끊겼다능" 같은 엉뚱한 메시지만
 // 뜨고 진짜 원인을 알 수 없게 되기 때문에, 맨 바깥을 한 번 더 try/catch로 감싼다.
-async function handleChat(request, env) {
+async function handleChat(request, env, ctx) {
   try {
-    return await handleChatInner(request, env);
+    return await handleChatInner(request, env, ctx);
   } catch (err) {
     return json({ error: `빨드한테 예상 못한 문제가 생겼다능... (${err?.message || err})` }, { status: 500 });
   }
 }
 
-async function handleChatInner(request, env) {
+async function handleChatInner(request, env, ctx) {
   let body;
   try {
     body = await request.json();
@@ -202,6 +218,20 @@ async function handleChatInner(request, env) {
   }
 
   const config = await getConfig(env);
+  // 통계는 응답을 늦추지 않게 백그라운드로 기록한다.
+  const bg = (p) => (ctx?.waitUntil ? ctx.waitUntil(p) : p);
+
+  // 관리자가 정한 요청 제한
+  if (typeof message === "string" && message.length > config.limits.maxMessageChars) {
+    return json({ error: `메시지가 너무 길다능! ${config.limits.maxMessageChars}자까지만 보낼 수 있다능` }, { status: 400 });
+  }
+  if (hasImages && images.length > config.limits.maxImages) {
+    return json({ error: `이미지는 한 번에 ${config.limits.maxImages}장까지만 보낼 수 있다능` }, { status: 400 });
+  }
+  if (config.providersEnabled[provider] === false) {
+    return json({ error: "지금은 이 AI를 쓸 수 없다능! 다른 AI를 골라달라능 🛠️" }, { status: 403 });
+  }
+  history = Array.isArray(history) && config.limits.historyTurns > 0 ? history.slice(-config.limits.historyTurns) : [];
 
   // 욕설·비속어 필터: block이면 AI를 부르지도 크레딧을 쓰지도 않고 빨드가 타일러 돌려보낸다.
   // mask면 금지어를 ***로 가려서 그대로 진행한다.
@@ -209,6 +239,7 @@ async function handleChatInner(request, env) {
     const bad = findBadWord(message, config.filter);
     if (bad) {
       if (config.filter.action === "block") {
+        if (config.statsEnabled) bg(track(env, { filtered: 1 }));
         return json({
           reply: "앗, 그런 말은 빨드가 못 알아듣겠다능... 예쁜 말로 다시 말해줄래? 🦕💕",
           filtered: true,
@@ -224,7 +255,15 @@ async function handleChatInner(request, env) {
   const effectiveCap = acct.cap;
   const effectiveDailyLimits = acct.dailyLimits;
 
-  const { isSmart, level, sunsetLabel } = getSmartInfo();
+  const ban = await getBan(env, identity);
+  if (ban && (!ban.until || ban.until > Date.now())) {
+    return json({ error: `이용이 제한된 계정이다능${ban.reason ? ` (${ban.reason})` : ""}. 문의가 필요하면 관리자에게 알려달라능`, banned: true }, { status: 403 });
+  }
+  const bgTrack = (events) => { if (config.statsEnabled) bg(track(env, events, identity, isGuest)); };
+
+  const smart = getSmartInfo();
+  const { isSmart, sunsetLabel } = smart;
+  const level = config.prompt.sunsetMode ? smart.level : 0; // 노을 효과를 끄면 항상 멍청 모드
   const tier = normalizeTier(model);
   const realModel = MODEL_IDS[provider]?.[tier];
   const cost = computeCost(config, provider, tier, hasImages ? images.length : 0);
@@ -257,6 +296,7 @@ async function handleChatInner(request, env) {
   const currentBalance = acct.balance;
 
   if (currentBalance < cost) {
+    bgTrack({ outOfCredits: 1 });
     const wait = acct.refill?.nextAt ? Math.max(1, Math.ceil((acct.refill.nextAt - Date.now()) / 60000)) : null;
     const when = wait ? ` ${wait >= 60 ? `${Math.floor(wait / 60)}시간 ${wait % 60}분` : `${wait}분`} 뒤에 다시 충전된다능!` : "";
     return json({
@@ -270,6 +310,7 @@ async function handleChatInner(request, env) {
       snack: false,
       outOfCredits: true,
     });
+    // (통계는 아래에서 기록)
   }
 
   // 아주 쉬운 사칙연산은 빨드의 개그 두뇌가 직접 처리 (진짜 AI 호출 없이, 크레딧 절약!)
@@ -295,6 +336,7 @@ async function handleChatInner(request, env) {
     limitCheck = { allowed: true, remaining: null, limit: null, enabled: false };
   }
   if (!limitCheck.allowed) {
+    bgTrack({ dailyLimitHit: 1 });
     return json(
       {
         reply: isGuest
@@ -310,7 +352,8 @@ async function handleChatInner(request, env) {
     );
   }
 
-  const systemPrompt = [buildSystemPrompt(level), TIERS[tier].hint].filter(Boolean).join("\n");
+  const systemPrompt = [buildSystemPrompt(level), TIERS[tier].hint, config.prompt.extra].filter(Boolean).join("\n");
+  const maxTokens = config.limits.maxTokens;
   let reply;
   try {
     if (provider === "builtin" || provider === "cloudflare") {
@@ -321,11 +364,12 @@ async function handleChatInner(request, env) {
             ? "오오 사진이 여러 장이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 다 이쁘다능! 🦕🖼️"
             : "오오 사진이다! 근데 빨드는 그림이 뭔지 잘 모르겠다능... 그래도 이쁘다능! 🦕🖼️";
       } else if (provider === "builtin") {
-        reply = builtinReply(message, { history });
+        reply = builtinReply(message, { history, custom: config.customReplies });
       } else {
         reply = await callCloudflareAI({
           env,
           model: realModel,
+          maxTokens,
           systemPrompt,
           history,
           message: hasImages
@@ -335,19 +379,24 @@ async function handleChatInner(request, env) {
       }
     } else if (provider === "anthropic") {
       if (!apiKey) return json({ error: "클로드 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callAnthropic({ apiKey, model: realModel, systemPrompt, history, message, images });
+      reply = await callAnthropic({ apiKey, tier, model: realModel, maxTokens, systemPrompt, history, message, images });
     } else if (provider === "openai") {
       if (!apiKey) return json({ error: "챗지피티 API 키를 설정에 넣어달라능!" }, { status: 400 });
-      reply = await callOpenAI({ apiKey, model: realModel, systemPrompt, history, message, images });
+      reply = await callOpenAI({ apiKey, tier, model: realModel, maxTokens, systemPrompt, history, message, images });
     } else if (provider === "gemini") {
       if (!apiKey && !googleAccessToken) {
         return json({ error: "제미나이 API 키를 설정에 넣거나, 구글 로그인을 해달라능!" }, { status: 400 });
       }
-      reply = await callGemini({ apiKey, accessToken: googleAccessToken, model: realModel, systemPrompt, history, message, images });
+      reply = await callGemini({ apiKey, accessToken: googleAccessToken, tier, model: realModel, maxTokens, systemPrompt, history, message, images });
     } else {
       return json({ error: "알 수 없는 provider다능" }, { status: 400 });
     }
   } catch (err) {
+    bgTrack({ errors: 1, [`err:${provider}`]: 1, ...(err instanceof ProviderError ? { [`errk:${err.kind}`]: 1 } : {}) });
+    if (err instanceof ProviderError) {
+      // 종류별로 사용자가 뭘 고치면 되는지 알려주고, 상태 코드도 의미에 맞게(키 오류 400, 한도 429, 바쁨 503 …) 돌려준다.
+      return json({ error: err.message, errorKind: err.kind, upstreamStatus: err.status || undefined }, { status: httpStatusFor(err) });
+    }
     return json({ error: `빨드가 넘어졌다능... (${err.message})` }, { status: 502 });
   }
 
@@ -361,6 +410,14 @@ async function handleChatInner(request, env) {
     });
   }
   const snack = maybeSnackLine(cost);
+  bgTrack({
+    chats: 1,
+    [isGuest ? "chatsGuest" : "chatsMember"]: 1,
+    [`p:${provider}`]: 1,
+    [`t:${tier}`]: 1,
+    spent: cost,
+    images: hasImages ? images.length : 0,
+  });
 
   return json({
     reply,
@@ -402,15 +459,104 @@ async function handleAdmin(request, env, url) {
     if (path === "config" && request.method === "POST") {
       const patch = await request.json();
       const next = await setConfig(env, patch);
+      await logAudit(env, admin, "설정 변경", Object.keys(patch || {}).join(", "));
       return json(next);
+    }
+
+    if (path === "config/reset" && request.method === "POST") {
+      const next = await resetConfig(env);
+      await logAudit(env, admin, "설정 초기화", "모든 설정을 기본값으로");
+      return json(next);
+    }
+
+    if (path === "stats" && request.method === "GET") {
+      const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days")) || 7));
+      return json({ days: await getStats(env, days) });
+    }
+
+    if (path === "bans" && request.method === "GET") {
+      return json({ items: await listBans(env) });
+    }
+    if (path === "bans/add" && request.method === "POST") {
+      const b = await request.json();
+      try {
+        const rec = await addBan(env, String(b.identity || "").trim(), b.reason, admin.email || admin.uid, b.days);
+        await logAudit(env, admin, "사용자 차단", `${rec.identity}${rec.reason ? ` · ${rec.reason}` : ""}${rec.until ? ` · ${b.days}일` : " · 영구"}`);
+        return json(rec);
+      } catch (err) {
+        return json({ error: err.message }, { status: 400 });
+      }
+    }
+    if (path === "bans/remove" && request.method === "POST") {
+      const b = await request.json();
+      await removeBan(env, String(b.identity || ""));
+      await logAudit(env, admin, "차단 해제", String(b.identity || ""));
+      return json({ ok: true });
+    }
+
+    if (path === "shares" && request.method === "GET") {
+      return json({ items: await listShares(env) });
+    }
+    if (path === "shares/revoke" && request.method === "POST") {
+      const b = await request.json();
+      const ok = await revokeShare(env, String(b.shareId || ""));
+      await logAudit(env, admin, "공유 해제", String(b.shareId || ""));
+      return json({ ok });
+    }
+
+    if (path === "filter-test" && request.method === "POST") {
+      const b = await request.json();
+      const config = await getConfig(env);
+      const text = String(b.text || "").slice(0, 500);
+      return json({ blocked: findBadWord(text, config.filter), masked: maskBadWords(text, config.filter), enabled: config.filter.enabled });
+    }
+
+    if (path === "audit" && request.method === "GET") {
+      return json({ items: await listAudit(env) });
+    }
+
+    if (path === "debug/access" && request.method === "GET") {
+      // 프록시가 실제로 어떤 헤더를 넘겨주는지 확인용 (비밀값은 보여주지 않고 "있음/없음"만)
+      const h = request.headers;
+      const pick = (k) => h.get(k) || "";
+      return json({
+        host: new URL(request.url).hostname,
+        xForwardedHost: pick("x-forwarded-host"),
+        xForwardedFor: pick("x-forwarded-for"),
+        cfConnectingIp: pick("cf-connecting-ip"),
+        proxyHeaderPresent: !!h.get("x-bbald-proxy"),
+        guardEnabled: !!(env.BBALD_PROXY_SECRET || env.BBALD_ALLOWED_HOSTS),
+        guardVia: checkAccess(request, env).via,
+        platform: env.PLATFORM || "cloudflare",
+      });
+    }
+
+    if (path === "health" && request.method === "GET") {
+      return json(await runHealth(env, { version: "bbald_ai" }));
+    }
+
+    if (path === "identity/reset" && request.method === "POST") {
+      const b = await request.json();
+      const identity = String(b.identity || "");
+      if (!identity) return json({ error: "identity가 필요하다능" }, { status: 400 });
+      let detail = "";
+      if (b.what === "usage") detail = `오늘 사용량 ${await resetTodayUsage(env, identity)}건 초기화`;
+      else if (b.what === "refill") { await resetRefillState(env, identity); detail = "재충전 기록 초기화"; }
+      else return json({ error: "what은 usage 또는 refill이어야 한다능" }, { status: 400 });
+      await logAudit(env, admin, "신원 초기화", `${identity} · ${detail}`);
+      return json({ ok: true, detail });
     }
 
     if (path === "lookup" && request.method === "GET") {
       const identity = url.searchParams.get("identity");
       if (!identity) return json({ error: "identity 파라미터가 필요하다능" }, { status: 400 });
       const config = await getConfig(env);
-      const credits = await getBalance(env, identity, config.startingCredits);
-      return json({ identity, credits });
+      const isGuest = !identity.startsWith("uid:");
+      const cap = isGuest ? config.startingCreditsGuest : config.startingCredits;
+      const { balance: credits, refill } = await getBalanceWithRefill(env, identity, cap, config.refillIntervalMin, config.refillMaxPer24h);
+      const today = await getUsageSummary(env, identity, isGuest ? config.dailyLimitsGuest : config.dailyLimits);
+      const ban = await getBan(env, identity);
+      return json({ identity, credits, cap, isGuest, today, refill, ban });
     }
 
     if (path === "list" && request.method === "GET") {
@@ -539,8 +685,24 @@ async function handleBilling(request, env, url) {
 }
 
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+  async fetch(request, env, ctx) {
+    // 0) 접근 가드: 정식 주소(ramalok.kr/bbald_ai)를 거치지 않은 원본(dev) 주소 접근은 안내 후 이동 (환경변수가 있을 때만 켜짐)
+    const access = checkAccess(request, env);
+    if (!access.allowed) return blockedResponse(request, access.cfg);
+    if (access.clientIp) {
+      // 프록시 뒤에서는 연결 IP가 프록시 IP라서, 프록시가 알려준 진짜 방문자 IP로 바꿔준다.
+      const headers = new Headers(request.headers);
+      headers.set("cf-connecting-ip", access.clientIp);
+      request = new Request(request, { headers });
+    }
+
+    let url = new URL(request.url);
+    // "/bbald_ai/..." 로 바로 들어와도(Cloudflare 라우트 방식) 접두사를 떼고 똑같이 처리한다.
+    // (Vercel 리라이트 방식은 이미 접두사를 떼고 넘겨준다.)
+    if (url.pathname === "/bbald_ai" || url.pathname.startsWith("/bbald_ai/")) {
+      url.pathname = url.pathname.slice("/bbald_ai".length) || "/";
+      request = new Request(url, request);
+    }
     // 프록시 앞단(예: PaLhomepage의 미들웨어)이 실수로 끝에 슬래시를 붙여
     // "/api/chat/" 같은 요청을 보내는 경우가 있었다(실제로 이것 때문에 전체
     // 채팅이 404로 응답 못 하는 버그가 있었음). API 경로만큼은 끝 슬래시가
@@ -548,7 +710,7 @@ export default {
     const apiPath = url.pathname.startsWith("/api/") ? url.pathname.replace(/\/+$/, "") : url.pathname;
 
     if (apiPath === "/api/chat" && request.method === "POST") {
-      return handleChat(request, env);
+      return handleChat(request, env, ctx);
     }
 
     if (apiPath === "/api/config/public" && request.method === "GET") {
@@ -582,9 +744,14 @@ export default {
         const acct = await getAccount(request, env, config, bodyIn.uid, bodyIn.idToken);
         // 보너스는 로컬(KV) 기본 크레딧에만 붙고 localCap을 넘지 않는다. 통합 크레딧은 건드리지 않는다.
         let result;
-        if (bodyIn.type === "signup") result = await claimSignupBonus(env, acct.identity, acct.localCap);
-        else if (bodyIn.type === "sticker") result = await claimStickerBonus(env, acct.identity, acct.localCap);
-        else return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
+        if (bodyIn.type === "signup") {
+          result = await claimSignupBonus(env, acct.identity, acct.localCap, config.bonus.signupPct);
+          if (result.granted && config.statsEnabled) ctx?.waitUntil?.(track(env, { signups: 1 }));
+        } else if (bodyIn.type === "sticker") {
+          if (!config.bonus.sticker.enabled) return json({ granted: false, balance: acct.balance, cap: acct.cap, disabled: true });
+          result = await claimStickerBonus(env, acct.identity, acct.localCap, config.bonus.sticker);
+          if (result.granted && config.statsEnabled) ctx?.waitUntil?.(track(env, { stickers: 1 }));
+        } else return json({ error: "알 수 없는 보너스 종류다능" }, { status: 400 });
         const balance = result.balance + (acct.unified?.credits || 0);
         return json({ ...result, balance, cap: acct.cap });
       } catch (err) {
