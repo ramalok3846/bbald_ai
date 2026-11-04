@@ -108,12 +108,39 @@
       lite: "gemini-3.8-flash-lite", basic: "gemini-3.8-flash", deep: "gemini-3.8-pro", story: "gemini-3.8-pro-creative",
     },
   };
-  const MODEL_CATALOG = Object.fromEntries(
-    Object.keys(REAL_MODEL).map((prov) => [
-      prov,
-      TIERS.map((t) => ({ ...t, desc: `${REAL_MODEL[prov][t.value]} — ${t.desc}` })),
-    ])
-  );
+  let MODEL_CATALOG;
+  function buildCatalog() {
+    MODEL_CATALOG = Object.fromEntries(
+      Object.keys(REAL_MODEL).map((prov) => [
+        prov,
+        TIERS.map((t) => ({ ...t, desc: `${REAL_MODEL[prov][t.value]} — ${t.desc}` })),
+      ])
+    );
+  }
+  buildCatalog();
+
+  // 관리자 설정 중 모두에게 공개되는 값(대기 시간, 단계별 비용/로그인 필요, 공유 허용 등).
+  // 서버에서 못 받아도 아래 기본값으로 그대로 동작한다.
+  let pubCfg = {
+    think: { minSec: 5, maxSec: 20, eatChancePct: 60 },
+    tierMult: { lite: 1, basic: 1.5, deep: 3, story: 2 },
+    memberOnlyTiers: { lite: false, basic: false, deep: true, story: true },
+    guestImages: false,
+    sharing: { enabled: true, publicAllowed: true },
+  };
+  async function loadPublicConfig() {
+    try {
+      const res = await fetch("api/config/public", { cache: "no-store" });
+      if (!res.ok) return;
+      pubCfg = { ...pubCfg, ...(await res.json()) };
+      for (const t of TIERS) {
+        if (pubCfg.tierMult?.[t.value] != null) t.cost = pubCfg.tierMult[t.value];
+        if (pubCfg.memberOnlyTiers?.[t.value] != null) t.memberOnly = !!pubCfg.memberOnlyTiers[t.value];
+      }
+      buildCatalog();
+      rebuildModelOptions();
+    } catch {}
+  }
   function isMemberOnlyModel(provider, model) {
     return MODEL_CATALOG[provider]?.find((m) => m.value === model)?.memberOnly === true;
   }
@@ -180,6 +207,59 @@
   let currentConvId = null;
   let conversationsCache = [];
   let isIncognito = false;
+
+  // ---- 채팅 고유번호 + 주소 파라미터 ----
+  // 일반/시크릿 모두 첫 메시지를 보낼 때 고유번호가 생기고 주소에 ?c=번호 (시크릿은 &secret=1)가 붙는다.
+  // 새로고침하거나 주소를 다시 열면 같은 대화로 돌아온다 — 로그인 일반 채팅은 서버 저장본,
+  // 게스트/시크릿은 이 탭의 sessionStorage에서 (탭을 닫으면 사라져서 "저장 안 됨"은 그대로).
+  const urlParams = new URLSearchParams(location.search);
+  const shareParam = urlParams.get("share");
+  let pendingConvParam = /^[a-z0-9]{8,40}$/.test(urlParams.get("c") || "") ? urlParams.get("c") : null;
+  const pendingSecret = urlParams.get("secret") === "1";
+  function newChatId() {
+    const a = new Uint8Array(10);
+    crypto.getRandomValues(a);
+    return Array.from(a, (b) => (b % 36).toString(36)).join("") + Date.now().toString(36).slice(-4);
+  }
+  function syncUrl() {
+    if (shareParam) return;
+    try {
+      const u = new URL(location.href);
+      if (currentConvId) {
+        u.searchParams.set("c", currentConvId);
+        if (isIncognito) u.searchParams.set("secret", "1");
+        else u.searchParams.delete("secret");
+      } else {
+        u.searchParams.delete("c");
+        u.searchParams.delete("secret");
+      }
+      history.replaceState(null, "", u);
+    } catch {}
+  }
+  function ensureConvId() {
+    if (!currentConvId) currentConvId = newChatId();
+    syncUrl();
+  }
+  function sessionSave() {
+    if (!currentConvId || !currentMessages.length) return;
+    if (currentUser && !isIncognito) return; // 로그인 일반 채팅은 서버에 저장됨
+    try {
+      sessionStorage.setItem(`bbald_sess_${currentConvId}`, JSON.stringify({ messages: currentMessages, secret: isIncognito, ts: Date.now() }));
+    } catch {}
+  }
+  function sessionLoad(id) {
+    try {
+      const r = JSON.parse(sessionStorage.getItem(`bbald_sess_${id}`) || "null");
+      return r && Array.isArray(r.messages) ? r : null;
+    } catch {
+      return null;
+    }
+  }
+  function renderCurrentMessages() {
+    chatEl.innerHTML = "";
+    if (!currentMessages.length) addGreeting();
+    else for (const m of currentMessages) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true });
+  }
 
   const USAGE_RING_CIRCUMFERENCE = 113.1; // 2 * PI * r(18)
 
@@ -488,21 +568,19 @@
       const res = await fetch(`api/conversations/${encodeURIComponent(id)}`, {
         headers: { "x-user-token": idToken || "" },
       });
-      if (!res.ok) return;
+      if (!res.ok) { if (currentConvId === id) { currentConvId = null; syncUrl(); } return false; }
       const conv = await res.json();
       currentConvId = conv.id;
       currentMessages = Array.isArray(conv.messages) ? conv.messages : [];
       isIncognito = false;
       updateSecretBadge();
-      chatEl.innerHTML = "";
-      if (!currentMessages.length) {
-        addGreeting();
-      } else {
-        for (const m of currentMessages) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true });
-      }
+      renderCurrentMessages();
+      syncUrl();
       renderConvList();
       closeSidebar();
+      return true;
     } catch {}
+    return false;
   }
 
   async function deleteConversationRemote(id) {
@@ -519,6 +597,7 @@
         currentMessages = [];
         chatEl.innerHTML = "";
         addGreeting();
+        syncUrl();
       }
       renderConvList();
     } catch {}
@@ -539,7 +618,7 @@
         const record = await res.json();
         currentConvId = record.id;
         const idx = conversationsCache.findIndex((c) => c.id === record.id);
-        const summary = { id: record.id, title: record.title, updatedAt: record.updatedAt };
+        const summary = { id: record.id, title: record.title, updatedAt: record.updatedAt, visibility: record.visibility, shareId: record.shareId };
         if (idx >= 0) conversationsCache[idx] = summary;
         else conversationsCache.unshift(summary);
         renderConvList();
@@ -552,7 +631,6 @@
   // 원래도 저장될 대화가 아니었으니 건너뛴다.
   async function autoSaveGuestHistoryOnLogin() {
     if (isIncognito || !currentMessages.length) return;
-    currentConvId = null; // 게스트 때는 서버 id가 없었으니 새로 만든다
     await persistCurrentConversation();
   }
 
@@ -565,11 +643,17 @@
       grantSignupBonusIfNeeded(currentUser);
       if (!previousUser) await autoSaveGuestHistoryOnLogin();
       await refreshConversationList();
+      if (pendingConvParam && !shareParam) {
+        const id = pendingConvParam;
+        pendingConvParam = null;
+        if (!currentMessages.length) await loadConversationById(id);
+      }
     } else {
       currentIdToken = null;
       googleGeminiAccessToken = null;
       conversationsCache = [];
       syncCreditsFromServer();
+      if (pendingConvParam && !shareParam) { pendingConvParam = null; currentConvId = null; syncUrl(); } // 저장본이 없는 주소
     }
     renderAccount();
     renderConvList();
@@ -745,31 +829,21 @@
     addMessage("assistant", "안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)", { skipStore: true });
   }
 
-  // ---------------- 생각 중 표시 (클로드 데스크톱의 "대화 압축 중"처럼) ----------------
-  // 멘트는 전부 빨드식 말투(다능체)다. 10번 중 6번은 빨드가 "먹는 시간"(영양
-  // 떨어짐/충전중/초콜릿 먹는 중 등)을 가지면서 10초~1분 길게 기다리고, 나머지
-  // 4번은 그냥 짧게 생각하는 중이라고만 한다.
-  const LOADING_PHRASES_EATING = [
-    "영양 떨어짐... 충전 중이다능 🔌",
-    "초콜릿 먹는 중... 쫌만 기다려달라능 🍫",
-    "두뇌 배터리 충전 중... 삐빅 삐빅 🔋",
-    "간식 먹는 중... 금방 돌아온다능 🍪",
-    "두뇌 과열... 식히는 중이다능 🧊",
-    "생각하다가 깜빡 졺... 다시 깨는 중이다능 😴",
-    "꼬리에 힘주고 생각하는 중이다능 🦕",
+  // ---------------- 생각 중 표시 ----------------
+  // 대기 중에는 메시지를 하나만 보여준다(돌아가며 바뀌지 않음). 채팅마다 eatChancePct(기본 60%)
+  // 확률로 "쵸꼴뤳 먹는 중" 멘트, 아니면 "생각 중" 멘트. 기다리는 시간은 관리자 설정의
+  // minSec~maxSec(기본 5~20초) 사이 랜덤이고, 실제 응답이 더 늦으면 응답이 올 때까지다.
+  const EAT_PHRASES = [
+    "빨드 쵸꼴뤳 먹는 중이다능...! 🍫",
+    "빨드 쵸~~꼴--륏 냠냠 먹는 중이다능...! 🍫",
+    "빨드 영양 보충 중이다능... 쵸꼴뤳 냠냠! 🍫",
   ];
-  const LOADING_PHRASES_QUICK = [
-    "생각 중이다능...",
-    "빨드가 열심히 생각하고 있다능...",
-    "음... 잠깐만 기다려달라능",
-    "곰곰이 생각하는 중이다능...",
-  ];
+  const THINK_PHRASE = "빨드 생각 중이다능... 🦕";
   function pickLoadingPhrase(isEating) {
-    const pool = isEating ? LOADING_PHRASES_EATING : LOADING_PHRASES_QUICK;
-    return pool[Math.floor(Math.random() * pool.length)];
+    return isEating ? EAT_PHRASES[Math.floor(Math.random() * EAT_PHRASES.length)] : THINK_PHRASE;
   }
-  let loadingRotateTimer = null;
   function addLoadingBubble(isEating) {
+    removeLoadingBubble();
     const wrap = document.createElement("div");
     wrap.className = "msg assistant loading";
     wrap.id = "loadingBubble";
@@ -784,16 +858,8 @@
     wrap.appendChild(bubble);
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
-    // 먹는 시간(10초~1분)일 때는 기다리는 동안 멘트를 몇 초마다 바꿔준다.
-    if (isEating) {
-      loadingRotateTimer = setInterval(() => {
-        const b = document.querySelector("#loadingBubble .loading-bubble");
-        if (b) b.textContent = pickLoadingPhrase(true);
-      }, 4000);
-    }
   }
   function removeLoadingBubble() {
-    if (loadingRotateTimer) { clearInterval(loadingRotateTimer); loadingRotateTimer = null; }
     document.getElementById("loadingBubble")?.remove();
   }
 
@@ -856,7 +922,7 @@
   }
 
   function requireLoginForImages() {
-    if (currentUser) return true;
+    if (currentUser || pubCfg.guestImages) return true;
     addMessage("assistant", "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒", { extraClass: "snack" });
     return false;
   }
@@ -903,7 +969,7 @@
   input.addEventListener("paste", async (e) => {
     const items = Array.from(e.clipboardData?.items || []).filter((it) => it.type.startsWith("image/"));
     if (!items.length) return;
-    if (!currentUser) { e.preventDefault(); requireLoginForImages(); return; }
+    if (!currentUser && !pubCfg.guestImages) { e.preventDefault(); requireLoginForImages(); return; }
     e.preventDefault();
     for (const item of items) {
       const file = item.getAsFile();
@@ -923,10 +989,11 @@
     const { text, attachments, provider, model, apiKey } = job;
     const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
 
-    const isEatingTime = Math.random() < 0.6;
+    const th = pubCfg.think;
+    const isEatingTime = Math.random() * 100 < th.eatChancePct;
     addLoadingBubble(isEatingTime);
-    const eatingTimeMs = isEatingTime ? 10000 + Math.random() * 50000 : 0;
-    const eatingTimer = eatingTimeMs ? new Promise((resolve) => setTimeout(resolve, eatingTimeMs)) : Promise.resolve();
+    const waitMs = (th.minSec + Math.random() * Math.max(0, th.maxSec - th.minSec)) * 1000;
+    const eatingTimer = new Promise((resolve) => setTimeout(resolve, waitMs));
 
     const idToken = currentUser ? await getFreshIdToken() : null;
     let res;
@@ -978,14 +1045,12 @@
         currentMessages.push({ role: "assistant", content: data.reply });
         renderCredits(data.credits, data.cap);
         renderRefill(data.refill);
-        if (data.snack) {
-          addMessage("assistant", data.snack, { extraClass: "snack" });
-        }
         if (typeof data.smartLevel === "number") {
           const local = getLocalKstGuess();
           updateMoodUI(local.hour, local.minute, data.smartLevel, data.sunset);
         }
         await persistCurrentConversation();
+        sessionSave();
       }
     } catch (err) {
       removeLoadingBubble();
@@ -1021,7 +1086,9 @@
     const attachments = pendingAttachments;
 
     addMessage("user", text, { images: attachments.map((a) => a.dataUrl) });
+    ensureConvId();
     currentMessages.push({ role: "user", content: text || "(이미지 첨부)" });
+    sessionSave();
     input.value = "";
     clearAttachments();
     autoResize();
@@ -1043,10 +1110,14 @@
     currentMessages = [];
     chatEl.innerHTML = "";
     addGreeting();
+    syncUrl();
     renderConvList();
   }
 
-  newChatBtn.addEventListener("click", startNewChat);
+  newChatBtn.addEventListener("click", () => {
+    if (shareParam) { location.href = location.pathname; return; }
+    startNewChat();
+  });
 
   // ---------------- 시크릿(임시) 채팅 모드 — 켜져 있으면 로그인 상태여도 서버에
   // 저장하지 않는다. 다른 모드로 섞이지 않게 새 대화로 시작한다. ----------------
@@ -1182,4 +1253,105 @@
   syncCreditsFromServer();
   addGreeting();
   renderConvList();
+  loadPublicConfig();
+
+  // 주소에 ?c=번호 가 있으면 새로고침 전 대화로 복원한다 (게스트/시크릿은 이 탭 저장본, 로그인 회원은 인증 뒤 서버에서).
+  if (pendingConvParam && !shareParam) {
+    const sess = sessionLoad(pendingConvParam);
+    if (sess && (sess.secret || pendingSecret || !currentUser)) {
+      currentConvId = pendingConvParam;
+      currentMessages = sess.messages;
+      isIncognito = !!sess.secret;
+      updateSecretBadge();
+      renderCurrentMessages();
+      pendingConvParam = null;
+    }
+  }
+
+  // ---------------- 공유 ----------------
+  // 저장된 대화(로그인 + 시크릿 아님)만 공유할 수 있다. 공개 범위: 비공개 / 링크 공유 / 전체 공개.
+  const shareBtn = document.getElementById("shareBtn");
+  const shareBackdrop = document.getElementById("shareBackdrop");
+  const shareVisibility = document.getElementById("shareVisibility");
+  const shareLinkRow = document.getElementById("shareLinkRow");
+  const shareLink = document.getElementById("shareLink");
+  const shareHint = document.getElementById("shareHint");
+  const shareLinkFor = (shareId) => `${location.origin}${location.pathname}?share=${shareId}`;
+
+  async function openShare() {
+    shareBackdrop.classList.add("open");
+    shareLinkRow.hidden = true;
+    shareVisibility.disabled = true;
+    const publicOpt = shareVisibility.querySelector('option[value="public"]');
+    if (publicOpt) publicOpt.disabled = pubCfg.sharing?.publicAllowed === false;
+    const fail = (t) => { shareHint.textContent = t; };
+    if (pubCfg.sharing?.enabled === false) return fail("지금은 대화 공유가 꺼져 있다능.");
+    if (!currentUser) return fail("대화 공유는 로그인해야 쓸 수 있다능! 🔒");
+    if (isIncognito) return fail("시크릿 대화는 저장이 안 돼서 공유할 수 없다능 🕶️");
+    if (!currentMessages.length) return fail("먼저 빨드랑 대화를 해야 공유할 수 있다능!");
+    shareHint.textContent = "저장하는 중...";
+    await persistCurrentConversation();
+    const cur = conversationsCache.find((c) => c.id === currentConvId);
+    if (!cur) return fail("대화를 저장하지 못했다능... 잠시 후 다시 해달라능");
+    shareVisibility.value = cur.visibility || "private";
+    shareVisibility.disabled = false;
+    shareHint.textContent = "공개 범위를 고르면 바로 적용된다능. 공유하는 건 글(대화 내용)뿐이고 이미지는 안 나간다능.";
+    showShareLink(cur.shareId, cur.visibility);
+  }
+  function showShareLink(shareId, visibility) {
+    if (visibility && visibility !== "private" && shareId) {
+      shareLink.value = shareLinkFor(shareId);
+      shareLinkRow.hidden = false;
+    } else {
+      shareLinkRow.hidden = true;
+    }
+  }
+  shareBtn?.addEventListener("click", openShare);
+  document.getElementById("closeShare")?.addEventListener("click", () => shareBackdrop.classList.remove("open"));
+  shareBackdrop?.addEventListener("click", (e) => { if (e.target === shareBackdrop) shareBackdrop.classList.remove("open"); });
+  shareVisibility?.addEventListener("change", async () => {
+    shareVisibility.disabled = true;
+    try {
+      const idToken = await getFreshIdToken();
+      const res = await fetch(`api/conversations/${encodeURIComponent(currentConvId)}/share`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-user-token": idToken || "" },
+        body: JSON.stringify({ visibility: shareVisibility.value }),
+      });
+      const data = await res.json();
+      if (!res.ok) { shareHint.textContent = data.error || "공개 범위를 바꾸지 못했다능"; return; }
+      const cur = conversationsCache.find((c) => c.id === currentConvId);
+      if (cur) { cur.visibility = data.visibility; cur.shareId = data.shareId; }
+      shareHint.textContent = data.visibility === "private" ? "이제 나만 볼 수 있다능 🔒" : "공유 링크가 만들어졌다능! 아래 링크를 복사해서 보내면 된다능 🔗";
+      showShareLink(data.shareId, data.visibility);
+    } catch {
+      shareHint.textContent = "공개 범위를 바꾸지 못했다능...";
+    } finally {
+      shareVisibility.disabled = false;
+    }
+  });
+  document.getElementById("shareCopy")?.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(shareLink.value); shareHint.textContent = "링크를 복사했다능! 📋"; }
+    catch { shareLink.select(); shareHint.textContent = "복사가 안 돼서 선택만 해뒀다능, 직접 복사해달라능"; }
+  });
+
+  // 공유 링크(?share=...)로 들어오면 읽기 전용으로 보여준다 (로그인 필요 없음).
+  async function loadSharedView() {
+    composer.hidden = true;
+    const banner = document.createElement("div");
+    banner.className = "shared-banner";
+    banner.innerHTML = '<span>🔗 공유된 대화 (읽기 전용)</span><a href="' + location.pathname + '">나도 빨드와 대화하기</a>';
+    chatWrap.parentNode.insertBefore(banner, chatWrap);
+    chatEl.innerHTML = "";
+    try {
+      const res = await fetch(`api/share/${encodeURIComponent(shareParam)}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) { addMessage("assistant", data.error || "공유된 대화를 못 찾았다능...", { extraClass: "error" }); return; }
+      document.title = `${data.title || "공유된 대화"} · 빨드 AI`;
+      for (const m of data.messages || []) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true });
+    } catch {
+      addMessage("assistant", "공유된 대화를 불러오지 못했다능...", { extraClass: "error" });
+    }
+  }
+  if (shareParam) loadSharedView();
 })();

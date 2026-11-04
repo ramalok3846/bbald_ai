@@ -20,10 +20,19 @@ import {
   adminSetBalance,
   listCreditIdentities,
 } from "./credits.js";
-import { getConfig, setConfig } from "./config.js";
+import { getConfig, setConfig, publicConfig } from "./config.js";
+import { findBadWord, maskBadWords } from "./filter.js";
 import { requireAdmin } from "./admin.js";
 import { verifyIdToken } from "./firebase-verify.js";
-import { listConversations, getConversation, saveConversation, deleteConversation } from "./conversations.js";
+import {
+  listConversations,
+  getConversation,
+  saveConversation,
+  deleteConversation,
+  setVisibility,
+  getSharedConversation,
+  CONV_ID_RE,
+} from "./conversations.js";
 import {
   getUnified,
   spendUnified,
@@ -34,26 +43,15 @@ import {
 // provider 기본 비용 + 모델별 배율. "모델/AI별로 사용량이 다르게 빨리
 // 줄어들게 해달라"는 요청 반영 — 더 똑똑한(비싼) 모델일수록 더 많이 깎는다.
 // 모델 상세 정보(실제 API 모델 id, 비용 배율, 로그인 필요 여부)는 provider별로 묶어둔다.
-// "크레딧이 떨어지는 속도가 지금보다 많이 빨라야 한다"는 요청으로 기본 비용을
-// 전반적으로 올렸다 (대략 2배). 그만큼 회원 기본 cap(100)/PRO cap(×3)이 있어야
-// 회원·PRO가 게스트보다 확실히 더 많이 쓸 수 있다.
-const BASE_COST = {
-  builtin: 4,
-  cloudflare: 6,
-  anthropic: 14,
-  openai: 16,
-  gemini: 16,
-};
-const IMAGE_COST = 3; // 이미지 한 장당 추가 비용 (여러 장이면 장당 더 깎인다)
 // 모든 AI(빨드 기본/Cloudflare/Claude/ChatGPT/Gemini)가 똑같은 4단계 모델을 갖는다.
 // 클라이언트는 단계 키(lite/basic/deep/story)만 보내고, 실제로 어떤 모델이 불려가는지는
 // 여기서 provider별로 정한다 — 비용 배율·로그인 필요 여부·말투 힌트는 전부 단계 기준이라
 // 어느 AI를 골라도 똑같다.
 const TIERS = {
-  lite: { mult: 1, memberOnly: false, hint: "짧고 간단하게, 핵심만 가볍게 답해라." },
-  basic: { mult: 1.5, memberOnly: false, hint: "" },
-  deep: { mult: 3, memberOnly: true, hint: "차근차근 깊게 생각해서 조금 더 자세히 답해라." },
-  story: { mult: 2, memberOnly: true, hint: "이야기하듯 생생하고 표현력 풍부하게 답해라." },
+  lite: { hint: "짧고 간단하게, 핵심만 가볍게 답해라." },
+  basic: { hint: "" },
+  deep: { hint: "차근차근 깊게 생각해서 조금 더 자세히 답해라." },
+  story: { hint: "이야기하듯 생생하고 표현력 풍부하게 답해라." },
 };
 const MODEL_IDS = {
   anthropic: { lite: "haiku-4.5", basic: "sonnet-5", deep: "opus-5.5", story: "fable-5.1" },
@@ -72,12 +70,13 @@ const MODEL_IDS = {
 function normalizeTier(t) {
   return TIERS[t] ? t : "basic";
 }
-function computeCost(provider, tier, imageCount = 0) {
-  const base = BASE_COST[provider] ?? 8;
-  return Math.max(1, Math.round(base * TIERS[normalizeTier(tier)].mult)) + imageCount * IMAGE_COST;
+// 크레딧이 줄어드는 속도는 관리자 설정(config.costs × config.tierMult + 이미지당 imageCost)이다.
+function computeCost(config, provider, tier, imageCount = 0) {
+  const base = config.costs[provider] ?? 8;
+  return Math.max(1, Math.round(base * config.tierMult[normalizeTier(tier)])) + imageCount * config.imageCost;
 }
-function isMemberOnlyModel(tier) {
-  return TIERS[normalizeTier(tier)].memberOnly;
+function isMemberOnlyModel(config, tier) {
+  return config.memberOnlyTiers[normalizeTier(tier)] === true;
 }
 
 // 게스트는 IP가 아니라 브라우저가 만든 고유 ID(x-guest-id)로 구분한다 — IP로만 구분하면 같은
@@ -134,7 +133,7 @@ async function getAccount(request, env, config, uid, idToken) {
     // 잔액(local + 통합)이 항상 cap 이하라서 "135/100" 같은 표시가 안 나온다.
     cap: localCap + Math.max(unified.plan.credits, unified.credits),
     balance: local + unified.credits,
-    dailyLimits: computeEffectiveDailyLimits(config.dailyLimits, unified),
+    dailyLimits: computeEffectiveDailyLimits(config.dailyLimits, unified, config.paidDailyMultiplier),
     plan: unified.plan,
   };
 }
@@ -181,7 +180,7 @@ async function handleChatInner(request, env) {
     return json({ error: "잘못된 요청 형식이다능" }, { status: 400 });
   }
 
-  const {
+  let {
     message = "",
     history = [],
     provider = "builtin",
@@ -203,6 +202,23 @@ async function handleChatInner(request, env) {
   }
 
   const config = await getConfig(env);
+
+  // 욕설·비속어 필터: block이면 AI를 부르지도 크레딧을 쓰지도 않고 빨드가 타일러 돌려보낸다.
+  // mask면 금지어를 ***로 가려서 그대로 진행한다.
+  if (typeof message === "string" && config.filter.enabled) {
+    const bad = findBadWord(message, config.filter);
+    if (bad) {
+      if (config.filter.action === "block") {
+        return json({
+          reply: "앗, 그런 말은 빨드가 못 알아듣겠다능... 예쁜 말로 다시 말해줄래? 🦕💕",
+          filtered: true,
+          snack: false,
+        });
+      }
+      message = maskBadWords(message, config.filter);
+    }
+  }
+
   const acct = await getAccount(request, env, config, uid, idToken);
   const { isGuest, identity } = acct;
   const effectiveCap = acct.cap;
@@ -211,7 +227,7 @@ async function handleChatInner(request, env) {
   const { isSmart, level, sunsetLabel } = getSmartInfo();
   const tier = normalizeTier(model);
   const realModel = MODEL_IDS[provider]?.[tier];
-  const cost = computeCost(provider, tier, hasImages ? images.length : 0);
+  const cost = computeCost(config, provider, tier, hasImages ? images.length : 0);
 
   if (config.maintenance?.enabled) {
     return json(
@@ -228,10 +244,10 @@ async function handleChatInner(request, env) {
   }
 
   // 게스트 기능 제한: 이미지 첨부, 고급 모델(딥씽킹/스토리)은 로그인해야 쓸 수 있다.
-  if (isGuest && hasImages) {
+  if (isGuest && hasImages && !config.guestImages) {
     return json({ error: "이미지 첨부는 로그인하면 쓸 수 있다능! 게스트는 아직 안 된다능 🔒" }, { status: 403 });
   }
-  if (isGuest && isMemberOnlyModel(tier)) {
+  if (isGuest && isMemberOnlyModel(config, tier)) {
     return json({ error: "그 두뇌는 로그인해야 빌릴 수 있다능! 게스트는 라이트/기본만 쓸 수 있어 🔒" }, { status: 403 });
   }
 
@@ -336,6 +352,7 @@ async function handleChatInner(request, env) {
   }
 
   reply = applyPersonaFlourish(reply, level);
+  if (config.filter.enabled) reply = maskBadWords(reply, config.filter);
   const spend = await spendAccount(env, acct, cost);
   if (!spend.ok) {
     return json({
@@ -445,8 +462,20 @@ async function handleConversations(request, env, url) {
     }
     if (!id && request.method === "POST") {
       const bodyIn = await request.json();
+      if (bodyIn.id && !CONV_ID_RE.test(bodyIn.id)) return json({ error: "대화 번호 형식이 올바르지 않다능" }, { status: 400 });
       const record = await saveConversation(env, user.uid, bodyIn);
       return json(record);
+    }
+    if (id && id.endsWith("/share") && request.method === "POST") {
+      const convId = id.slice(0, -"/share".length);
+      const config = await getConfig(env);
+      const bodyIn = await request.json().catch(() => ({}));
+      const want = bodyIn.visibility;
+      if (want !== "private" && !config.sharing.enabled) return json({ error: "대화 공유가 꺼져 있다능" }, { status: 403 });
+      if (want === "public" && !config.sharing.publicAllowed) return json({ error: "전체 공개는 지금 막혀 있다능 (링크 공유만 가능)" }, { status: 403 });
+      const result = await setVisibility(env, user.uid, convId, want);
+      if (!result) return json({ error: "그 대화를 못 찾았다능 (저장된 대화만 공유할 수 있다능)" }, { status: 404 });
+      return json(result);
     }
     if (id && request.method === "DELETE") {
       await deleteConversation(env, user.uid, id);
@@ -522,6 +551,10 @@ export default {
       return handleChat(request, env);
     }
 
+    if (apiPath === "/api/config/public" && request.method === "GET") {
+      return json(publicConfig(await getConfig(env)), { headers: { "cache-control": "no-store" } });
+    }
+
     if (apiPath === "/api/time") {
       return json(getSmartInfo());
     }
@@ -561,6 +594,14 @@ export default {
 
     if (url.pathname.startsWith("/api/admin/")) {
       return handleAdmin(request, env, url);
+    }
+
+    if (apiPath.startsWith("/api/share/") && request.method === "GET") {
+      const config = await getConfig(env);
+      if (!config.sharing.enabled) return json({ error: "대화 공유가 꺼져 있다능" }, { status: 403 });
+      const shared = await getSharedConversation(env, apiPath.slice("/api/share/".length));
+      if (!shared) return json({ error: "공유된 대화를 못 찾았다능 (비공개로 바뀌었거나 없는 링크)" }, { status: 404 });
+      return json(shared, { headers: { "cache-control": "no-store" } });
     }
 
     if (apiPath === "/api/conversations" || apiPath.startsWith("/api/conversations/")) {

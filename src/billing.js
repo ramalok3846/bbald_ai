@@ -13,7 +13,6 @@
 import { RTDB_BASE } from "./firebase-verify.js";
 
 const PAL_BILLING_API = "https://www.ramalok.kr/api/billing";
-const PAID_DAILY_MULTIPLIER = 2; // 유료 요금제면 하루 제한 2배
 
 async function palCall(idToken, action, payload) {
   try {
@@ -73,7 +72,7 @@ export function isPaid(unified) {
   return !!unified && unified.plan?.id !== "free";
 }
 
-export function computeEffectiveDailyLimits(dailyLimits, unified) {
+export function computeEffectiveDailyLimits(dailyLimits, unified, multiplier = 2) {
   if (!isPaid(unified)) return dailyLimits;
-  return Object.fromEntries(Object.entries(dailyLimits).map(([k, v]) => [k, Math.round(v * PAID_DAILY_MULTIPLIER)]));
+  return Object.fromEntries(Object.entries(dailyLimits).map(([k, v]) => [k, Math.round(v * multiplier)]));
 }

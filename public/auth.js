@@ -6,6 +6,9 @@
 // 로그인 상태를 받는다 — 어느 경로든 결과는 항상 Firebase User 객체다.
 
 function dispatchAuthChanged(user) {
+  // 늦게 로드된 스크립트(예: 관리자 화면)가 첫 이벤트를 놓쳐서 "처음엔 흰 화면, 새로고침해야 나옴"이
+  // 되지 않도록 마지막 로그인 상태를 기억해둔다 (window.__bbaldAuthState).
+  window.__bbaldAuthState = { ready: true, user };
   window.dispatchEvent(new CustomEvent("bbald-auth-changed", { detail: { user } }));
 }
 

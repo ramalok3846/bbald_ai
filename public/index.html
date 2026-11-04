@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=22" />
+<link rel="stylesheet" href="style.css?v=23" />
 </head>
 <body>
 <div class="app">
@@ -73,6 +73,9 @@
         <span class="secret-badge" id="secretBadge" hidden>🕶️ 시크릿 모드 (저장 안 됨)</span>
       </div>
       <div class="topbar-right">
+        <button type="button" id="shareBtn" class="icon-btn" title="대화 공유" aria-label="대화 공유">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/><line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/></svg>
+        </button>
         <select id="providerSelect" class="select">
           <option value="builtin">빨드 기본 (무료)</option>
           <option value="cloudflare">Cloudflare Workers AI</option>
@@ -225,21 +228,45 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="shareBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <span>🔗 대화 공유</span>
+      <button class="modal-close" id="closeShare">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="shareHint"></p>
+      <label class="field">
+        <span>공개 범위</span>
+        <select id="shareVisibility" class="select">
+          <option value="private">비공개 (나만 볼 수 있음)</option>
+          <option value="link">링크 공유 (링크를 아는 사람만)</option>
+          <option value="public">전체 공개 (누구나)</option>
+        </select>
+      </label>
+      <div class="field-row" id="shareLinkRow" hidden>
+        <label class="field"><span>공유 링크</span><input type="text" id="shareLink" readonly /></label>
+        <button type="button" id="shareCopy" class="secondary-btn">복사</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox" hidden>
   <button type="button" class="lightbox-close" id="lightboxClose" aria-label="닫기">✕</button>
   <img id="lightboxImg" alt="확대된 이미지" />
 </div>
 
-<script src="firebase-config.js?v=22"></script>
+<script src="firebase-config.js?v=23"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=22"></script>
+<script type="module" src="auth.js?v=23"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 </body>
 </html>

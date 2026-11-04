@@ -909,3 +909,28 @@ html, body { height: 100%; }
   .select { flex: 1 1 100%; }
   .brand-name { font-size: 1rem; }
 }
+
+/* ---------- 공유된 대화(읽기 전용) ---------- */
+.shared-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 24px;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--purple-deep);
+}
+.shared-banner a {
+  color: #fff;
+  text-decoration: none;
+  background: linear-gradient(90deg, var(--pink-deep), var(--purple-deep));
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+#shareLink { width: 100%; }
+@media (max-width: 720px) { .shared-banner { padding: 10px 14px; } }
