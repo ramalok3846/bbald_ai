@@ -21,7 +21,30 @@ async function initShared() {
   const P = window.palAuth;
   const { updatePassword, updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
 
-  P.onAuthStateChanged((user) => dispatchAuthChanged(user));
+  P.onAuthStateChanged((user) => { lastUid = user ? user.uid : null; dispatchAuthChanged(user); });
+
+  // 팝업에서 로그인이 끝났는데 이 창의 Firebase가 새 로그인을 바로 못 알아채는 경우가 있다
+  // (같은 주소끼리는 커스텀 토큰 없이 브라우저 저장소로만 공유되기 때문).
+  // 그래서 팝업이 끝나면 잠깐 기다려 보고, 그래도 로그인 상태가 안 잡히면 새로고침해서 저장된 세션을 읽는다.
+  let lastUid = null;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function loginAndSync() {
+    const res = await window.PalSSO.login({ popup: true });
+    for (let i = 0; i < 16 && !P.currentUser(); i++) await sleep(250);
+    if (!P.currentUser() && res && res.user) { location.reload(); return res; }
+    const u = P.currentUser();
+    if (u && u.uid !== lastUid) { lastUid = u.uid; dispatchAuthChanged(u); }
+    return res;
+  }
+  // 다른 탭/팝업에서 로그인·로그아웃한 뒤 이 창으로 돌아왔을 때 상태를 다시 맞춘다.
+  window.addEventListener("pal-sso-signed-in", () => { const u = P.currentUser(); if (u) { lastUid = u.uid; dispatchAuthChanged(u); } });
+  const resync = () => {
+    const u = P.currentUser();
+    const uid = u ? u.uid : null;
+    if (uid !== lastUid) { lastUid = uid; dispatchAuthChanged(u); }
+  };
+  window.addEventListener("focus", resync);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resync(); });
 
   window.bbaldAuth = {
     enabled: true,
@@ -29,9 +52,9 @@ async function initShared() {
     // "로그인" 버튼을 누르면 PAL 통합 로그인 화면(/login)을 팝업으로 띄운다.
     // 이메일/비밀번호, Google, 회원가입, 비밀번호 재설정까지 거기서 전부 처리되고,
     // 끝나면 이 창에 postMessage로 결과를 돌려준다(팝업이 막히면 자동으로 이동 방식).
-    signInGoogle: () => window.PalSSO.login({ popup: true }),
-    signUpEmail: () => window.PalSSO.login({ popup: true }),
-    signInEmail: () => window.PalSSO.login({ popup: true }),
+    signInGoogle: () => loginAndSync(),
+    signUpEmail: () => loginAndSync(),
+    signInEmail: () => loginAndSync(),
     signOutUser: () => window.PalSSO.logout(), // 통합 로그아웃: 다른 PAL 서비스에서도 로그아웃된다
     changePassword: (newPassword) => updatePassword(P.auth.currentUser, newPassword),
     changeEmail: (newEmail) => updateEmail(P.auth.currentUser, newEmail),
@@ -40,7 +63,7 @@ async function initShared() {
 
   // 이미 로그인돼 있으면(메인 사이트 등에서) 곧바로 알려준다.
   const current = P.currentUser();
-  if (current) dispatchAuthChanged(current);
+  if (current) { lastUid = current.uid; dispatchAuthChanged(current); }
 }
 
 // ---------------- 경로 2: 빨드 AI 자체 로그인 (통합 로그인 스크립트가 없을 때만) ----------------
