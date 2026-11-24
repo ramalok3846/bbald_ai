@@ -46,6 +46,7 @@ const req = (path, { method = "GET", body, headers = {} } = {}) =>
 const admin = (path, o = {}) => req("/api/admin/" + path, { ...o, headers: { "x-admin-token": "admin", ...(o.headers || {}) } });
 const jsonOf = async (r) => { try { return await r.json(); } catch { return null; } };
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+let d2;
 const chat = (b, h) => req("/api/chat", { method: "POST", body: { message: "안녕", provider: "builtin", model: "basic", ...b }, headers: h });
 
 // ---- 기본 ----
@@ -84,6 +85,21 @@ providerMode = "auth"; r = await chat({ ...M, provider: "anthropic", apiKey: "ba
 providerMode = "quota"; r = await chat({ ...M, provider: "openai", apiKey: "k" }); d = await jsonOf(r); ok(r.status === 429, "openai 한도 429", JSON.stringify(d));
 providerMode = "overloaded"; r = await chat({ ...M, provider: "gemini", apiKey: "k" }); d = await jsonOf(r); ok(r.status === 503, "gemini 과부하 503", JSON.stringify(d));
 providerMode = "ok";
+
+// ---- 대화 저장(이미지 포함) ----
+{
+  const JPG = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
+  const save = (b) => req("/api/conversations", { method: "POST", body: b, headers: { "x-user-token": "usr" } });
+  r = await save({ messages: [{ role: "user", content: "사진", images: [JPG, "https://evil/x.png", "data:text/html;base64,AA", JPG] }, { role: "assistant", content: "ok", images: [JPG] }] });
+  d = await jsonOf(r); ok(r.status === 200 && d.messages[0].images?.length === 2, "저장 시 이미지 정리", JSON.stringify(d).slice(0, 160));
+  r = await req("/api/conversations/" + d.id, { headers: { "x-user-token": "usr" } }); const got = await jsonOf(r);
+  ok(got.messages[0].images?.length === 2 && got.messages[0].images[0] === JPG, "다시 열면 이미지 유지");
+  r = await save({ id: d.id, messages: [{ role: "user", content: "큰 것", images: ["data:image/jpeg;base64," + "A".repeat(700000)] }] }); d2 = await jsonOf(r);
+  ok(d2.messages[0].images === undefined, "너무 큰 이미지는 저장 안 함");
+  r = await req(`/api/conversations/${d.id}/share`, { method: "POST", body: { visibility: "link" }, headers: { "x-user-token": "usr" } }); const sh = await jsonOf(r);
+  if (sh?.shareId) { r = await req("/api/share/" + sh.shareId); const sd = await jsonOf(r); ok(r.status === 200 && !JSON.stringify(sd).includes("base64"), "공유 화면엔 이미지 제외", JSON.stringify(sd).slice(0,100)); }
+  else ok(false, "공유 생성", JSON.stringify(sh));
+}
 
 // ---- 관리자 ----
 r = await req("/api/admin/me"); ok(r.status === 403, "토큰 없으면 관리자 403");

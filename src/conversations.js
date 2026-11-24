@@ -5,6 +5,28 @@
 
 const MAX_CONVERSATIONS = 50;
 const MAX_MESSAGES_PER_CONV = 200;
+// 대화에 저장하는 이미지(미리보기용으로 줄인 JPEG): 한 장 ~600KB, 메시지당 4장, 대화 전체 ~12MB까지 (KV 값 한도 25MB 안쪽).
+const MAX_IMAGE_CHARS = 600_000;
+const MAX_IMAGES_PER_MSG = 4;
+const MAX_IMAGE_CHARS_PER_CONV = 12_000_000;
+const IMG_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+// 저장 전에 메시지를 정리한다: 역할/글/이미지만 남기고, 이상한 값은 버린다. 용량이 넘치면 오래된 메시지의 이미지부터 뺀다.
+export function cleanMessages(messages) {
+  const list = (Array.isArray(messages) ? messages : []).slice(-MAX_MESSAGES_PER_CONV).map((m) => {
+    const out = { role: m?.role === "assistant" ? "assistant" : "user", content: String(m?.content ?? "").slice(0, 10000) };
+    if (Array.isArray(m?.images)) {
+      const imgs = m.images.filter((x) => typeof x === "string" && x.length <= MAX_IMAGE_CHARS && IMG_RE.test(x)).slice(0, MAX_IMAGES_PER_MSG);
+      if (imgs.length) out.images = imgs;
+    }
+    return out;
+  });
+  let total = list.reduce((a, m) => a + (m.images || []).reduce((b, x) => b + x.length, 0), 0);
+  for (let i = 0; i < list.length && total > MAX_IMAGE_CHARS_PER_CONV; i++) {
+    if (list[i].images) { total -= list[i].images.reduce((b, x) => b + x.length, 0); delete list[i].images; }
+  }
+  return list;
+}
 
 function convKey(uid, id) {
   return `conv:${uid}:${id}`;
@@ -62,7 +84,7 @@ export async function saveConversation(env, uid, { id, title, messages }) {
   if (id && !CONV_ID_RE.test(id)) throw new Error("대화 번호 형식이 올바르지 않다능");
   const convId = id || newId();
   const now = Date.now();
-  const trimmedMessages = Array.isArray(messages) ? messages.slice(-MAX_MESSAGES_PER_CONV) : [];
+  const trimmedMessages = cleanMessages(messages);
   const existing = id ? await getConversation(env, uid, id) : null;
   const record = {
     id: convId,
@@ -127,7 +149,9 @@ export async function getSharedConversation(env, shareId) {
     const ref = JSON.parse(raw);
     const conv = await getConversation(env, ref.uid, ref.id);
     if (!conv || conv.visibility === "private" || conv.shareId !== shareId) return null;
-    return { title: conv.title, messages: conv.messages, visibility: conv.visibility, updatedAt: conv.updatedAt };
+    // 공유 화면에는 글만 내보낸다 (사진은 개인 정보가 들어 있을 수 있어서 제외).
+    const messages = (conv.messages || []).map((m) => ({ role: m.role, content: m.content }));
+    return { title: conv.title, messages, visibility: conv.visibility, updatedAt: conv.updatedAt };
   } catch {
     return null;
   }

@@ -951,3 +951,5 @@ html, body { height: 100%; }
 .maint-msg{white-space:pre-wrap;word-break:break-word;line-height:1.7;font-size:17px;margin:0 0 20px}
 .maint-retry{padding:12px 22px;border-radius:14px;border:0;background:#d6322e;color:#fff;font:inherit;font-size:16px;cursor:pointer}
 body.maint-lock{overflow:hidden}
+
+.lightbox-dl{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-size:.95rem;backdrop-filter:blur(4px)}

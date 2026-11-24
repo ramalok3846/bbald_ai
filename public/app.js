@@ -319,9 +319,15 @@
   function sessionSave() {
     if (!currentConvId || !currentMessages.length) return;
     if (currentUser && !isIncognito) return; // 로그인 일반 채팅은 서버에 저장됨
+    const key = `bbald_sess_${currentConvId}`;
     try {
-      sessionStorage.setItem(`bbald_sess_${currentConvId}`, JSON.stringify({ messages: currentMessages, secret: isIncognito, ts: Date.now() }));
-    } catch {}
+      sessionStorage.setItem(key, JSON.stringify({ messages: currentMessages, secret: isIncognito, ts: Date.now() }));
+    } catch {
+      // 사진 때문에 저장 공간(약 5MB)이 넘치면 글만이라도 저장한다.
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ messages: currentMessages.map((m) => ({ role: m.role, content: m.content })), secret: isIncognito, ts: Date.now() }));
+      } catch {}
+    }
   }
   function sessionLoad(id) {
     try {
@@ -334,7 +340,7 @@
   function renderCurrentMessages() {
     chatEl.innerHTML = "";
     if (!currentMessages.length) addGreeting();
-    else for (const m of currentMessages) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true });
+    else for (const m of currentMessages) addMessage(m.role === "assistant" ? "assistant" : "user", m.content, { skipStore: true, images: m.images });
   }
 
   const USAGE_RING_CIRCUMFERENCE = 113.1; // 2 * PI * r(18)
@@ -998,6 +1004,26 @@
       img.src = dataUrl;
     });
   }
+  // 대화에 저장해 둘 미리보기 사진(긴 변 960px, JPEG 70%): 새로고침/대화 다시 열기에서도 보이게 한다.
+  function makeThumb(dataUrl) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, 960 / Math.max(img.naturalWidth, img.naturalHeight, 1));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+          c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+          const x = c.getContext("2d");
+          x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+          x.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL("image/jpeg", 0.7));
+        } catch { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  }
   async function addAttachmentSafe(dataUrl, label) {
     try {
       addAttachment(await normalizeImage(dataUrl), "image/jpeg");
@@ -1045,6 +1071,8 @@
 
   // ---------------- 이미지 확대(라이트박스) ----------------
   function openLightbox(src) {
+    const dl = document.getElementById("lightboxDownload");
+    if (dl) { dl.href = src; dl.download = `bbald-${Date.now()}.${/^data:image\/png/.test(src) ? "png" : "jpg"}`; }
     lightboxImg.src = src;
     lightbox.hidden = false;
   }
@@ -1106,7 +1134,7 @@
   const sendQueue = [];
 
   async function sendOne(job) {
-    const { text, attachments, provider, model, apiKey } = job;
+    const { text, attachments, provider, model, apiKey, thumbsReady } = job;
     const useGoogleGemini = provider === "gemini" && !apiKey && !!googleGeminiAccessToken;
 
     const th = pubCfg.think;
@@ -1124,7 +1152,7 @@
           headers: { "content-type": "application/json", ...guestHeaders() },
           body: JSON.stringify({
             message: text,
-            history: currentMessages.slice(-10),
+            history: currentMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
             provider,
             model,
             apiKey,
@@ -1170,6 +1198,7 @@
           const local = getLocalKstGuess();
           updateMoodUI(local.hour, local.minute, data.smartLevel, data.sunset);
         }
+        await (thumbsReady || Promise.resolve());
         await persistCurrentConversation();
         sessionSave();
       }
@@ -1208,13 +1237,18 @@
 
     addMessage("user", text, { images: attachments.map((a) => a.dataUrl) });
     ensureConvId();
-    currentMessages.push({ role: "user", content: text || "(이미지 첨부)" });
+    const userMsg = { role: "user", content: text || "(이미지 첨부)" };
+    currentMessages.push(userMsg);
+    const thumbsReady = attachments.length
+      ? Promise.all(attachments.map((a) => makeThumb(a.dataUrl))).then((t) => { const ok = t.filter(Boolean); if (ok.length) userMsg.images = ok; })
+      : Promise.resolve();
+    thumbsReady.then(() => sessionSave());
     sessionSave();
     input.value = "";
     clearAttachments();
     autoResize();
 
-    sendQueue.push({ text, attachments, provider, model, apiKey });
+    sendQueue.push({ text, attachments, provider, model, apiKey, thumbsReady });
     processQueue();
   });
 
@@ -1419,7 +1453,7 @@
     if (!cur) return fail("대화를 저장하지 못했다능... 잠시 후 다시 해달라능");
     shareVisibility.value = cur.visibility || "private";
     shareVisibility.disabled = false;
-    shareHint.textContent = "공개 범위를 고르면 바로 적용된다능. 공유하는 건 글(대화 내용)뿐이고 이미지는 안 나간다능.";
+    shareHint.textContent = "공개 범위를 고르면 바로 적용된다능. 공유하는 건 글(대화 내용)뿐이고 사진은 안 나간다능.";
     showShareLink(cur.shareId, cur.visibility);
   }
   function showShareLink(shareId, visibility) {
