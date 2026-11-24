@@ -2,6 +2,15 @@ name = "bbald-ai"
 main = "src/worker.js"
 compatibility_date = "2024-09-23"
 
+# workers.dev 직접 주소를 막아요. 정식 주소는 ramalok.kr/bbald_ai (PaLhomepage 프록시 → bbald-origin.ramalok.kr)
+workers_dev = false
+preview_urls = false
+
+# 프록시가 쓰는 원본 주소(대시보드에서 만든 커스텀 도메인). 코드에도 적어 두어야 재배포해도 안 사라져요.
+[[routes]]
+pattern = "bbald-origin.ramalok.kr"
+custom_domain = true
+
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -33,8 +42,6 @@ id = "b73742bb2a6d4515b648550622f3550f"
 # zone_name = "ramalok.kr"
 
 # ── 원본 주소(bbald-ai.ramalok.workers.dev) 없애기 ─────────────────────────
-# 아래 두 줄은 "정식 연결(커스텀 도메인/라우트)을 먼저 만든 다음에" 켜세요.
+# workers_dev / preview_urls 는 아래 최상단에서 꺼 두었어요. (정식 연결인 bbald-origin.ramalok.kr 을 먼저 만든 뒤에 껐어요)
 # 먼저 켜면 지금 ramalok.kr/bbald_ai 가 연결해 둔 workers.dev 주소가 사라져서 사이트가 멈춥니다.
 # 자세한 순서는 DEPLOY.md 참고.
-# workers_dev = false
-# preview_urls = false
