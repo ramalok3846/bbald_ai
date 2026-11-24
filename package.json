@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/worker.js && node --check src/guard.js && node --check src/platform.js"
+    "check": "node --check src/worker.js && node --check src/guard.js && node --check src/platform.js",
+    "test": "node test/regression.mjs"
   },
   "dependencies": {
     "suncalc": "^1.9.0"

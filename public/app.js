@@ -144,7 +144,25 @@
   }
 
   // 관리자가 정한 배너/공지/문구/AI 사용 여부/제한값을 화면에 반영한다.
+  // 점검 모드: 화면 전체를 덮고 입력을 막는다 (관리자 설정에서 켜면 새로고침 없이 다음 요청/포커스 때 바로 반영).
+  function applyMaintenance(on, message) {
+    let ov = document.getElementById("maintOverlay");
+    if (!on) { if (ov) ov.remove(); return; }
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "maintOverlay";
+      ov.className = "maint-overlay";
+      ov.setAttribute("role", "alertdialog");
+      ov.innerHTML = '<div class="maint-box"><div class="maint-emoji">🛠️</div><h2>점검 중이다능</h2><p class="maint-msg"></p><button type="button" class="maint-retry">다시 확인하기</button></div>';
+      document.body.appendChild(ov);
+      ov.querySelector(".maint-retry").addEventListener("click", () => loadPublicConfig());
+    }
+    ov.querySelector(".maint-msg").textContent = message || "잠시 후에 다시 와달라능!";
+  }
+  window.addEventListener("focus", () => { loadPublicConfig(); });
+
   function applyPublicExtras() {
+    applyMaintenance(!!pubCfg.maintenance?.enabled, pubCfg.maintenance?.message);
     const mainEl = document.querySelector(".main");
     let banner = document.getElementById("siteBanner");
     const bc = pubCfg.banner;
@@ -952,6 +970,40 @@
       attachPreview.appendChild(item);
     });
   }
+  // 사진은 그대로 보내면 너무 크거나(휴대폰 사진 5~15MB) AI가 못 읽는 형식(HEIC 등)일 수 있어서,
+  // 브라우저에서 한 번 다시 그려 긴 변 1568px 이하 JPEG(투명 배경은 흰색)로 줄여서 보낸다.
+  // 모든 AI(Claude/ChatGPT/Gemini)가 읽을 수 있고 요청 크기도 작아진다.
+  function normalizeImage(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const MAX = 1568;
+          const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight, 1));
+          const w = Math.max(1, Math.round(img.naturalWidth * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const c = document.createElement("canvas");
+          c.width = w; c.height = h;
+          const ctx = c.getContext("2d");
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          let out = c.toDataURL("image/jpeg", 0.85);
+          if (out.length > 4_500_000) out = c.toDataURL("image/jpeg", 0.6);
+          resolve(out);
+        } catch (e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error("이미지를 읽을 수 없다능"));
+      img.src = dataUrl;
+    });
+  }
+  async function addAttachmentSafe(dataUrl, label) {
+    try {
+      addAttachment(await normalizeImage(dataUrl), "image/jpeg");
+    } catch {
+      addMessage("assistant", `이 사진은 빨드가 못 열겠다능... (${label || "알 수 없는 형식"}) JPG/PNG/WEBP로 다시 올려달라능!`, { extraClass: "error", skipStore: true });
+    }
+  }
   function addAttachment(dataUrl, mimeType) {
     const maxImg = pubCfg.limits?.maxImages ?? 4;
     if (pendingAttachments.length >= maxImg) {
@@ -1009,8 +1061,12 @@
   fileInput.addEventListener("change", async () => {
     const files = Array.from(fileInput.files || []);
     for (const file of files) {
+      if (file.type && !file.type.startsWith("image/")) {
+        addMessage("assistant", `"${file.name}" 은(는) 이미지가 아니라서 못 붙인다능!`, { extraClass: "error", skipStore: true });
+        continue;
+      }
       const dataUrl = await fileToDataUrl(file);
-      addAttachment(dataUrl, file.type);
+      await addAttachmentSafe(dataUrl, file.type || file.name);
     }
     fileInput.value = "";
   });
@@ -1022,7 +1078,7 @@
     for (const url of urls) {
       try {
         const dataUrl = await urlToDataUrl(url);
-        addAttachment(dataUrl, "image/*");
+        await addAttachmentSafe(dataUrl, url);
       } catch {
         addMessage("assistant", `이미지를 못 가져왔다능... (${url})`, { extraClass: "error" });
       }
@@ -1038,7 +1094,7 @@
       const file = item.getAsFile();
       if (file) {
         const dataUrl = await fileToDataUrl(file);
-        addAttachment(dataUrl, file.type);
+        await addAttachmentSafe(dataUrl, file.type);
       }
     }
   });
@@ -1097,6 +1153,7 @@
       const data = await res.json();
       removeLoadingBubble();
 
+      if (data.maintenance) { applyMaintenance(true, data.reply || data.error); return; }
       if (!res.ok) {
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
         renderRefill(data.refill);

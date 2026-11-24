@@ -211,13 +211,33 @@ async function handleChatInner(request, env, ctx) {
     // 요금제·크레딧을 쓴다 (없거나 uid와 안 맞으면 게스트).
     idToken = null,
   } = body;
-  const hasImages = Array.isArray(images) && images.length > 0;
+  // 이미지 검증: data URL이고 JPEG/PNG/GIF/WEBP이며 한 장당 약 5MB 이하인 것만 받는다 (AI들이 공통으로 읽을 수 있는 형식).
+  // 걸러내지 않으면 제공자가 "unsupported media type"/"too large" 같은 알 수 없는 오류(400/413)를 돌려준다.
+  if (Array.isArray(images) && images.length) {
+    const ok = [];
+    for (const img of images) {
+      const m = /^data:(image\/(?:jpeg|jpg|png|gif|webp));base64,([A-Za-z0-9+/=\s]+)$/i.exec(typeof img?.dataUrl === "string" ? img.dataUrl : "");
+      if (!m) return json({ error: "지원하지 않는 이미지 형식이다능! JPG/PNG/GIF/WEBP만 볼 수 있다능 🖼️" }, { status: 400 });
+      if (m[2].length > 7_000_000) return json({ error: "이미지가 너무 크다능! 5MB 이하로 줄여달라능 🖼️" }, { status: 413 });
+      const mime = m[1].toLowerCase() === "image/jpg" ? "image/jpeg" : m[1].toLowerCase();
+      ok.push({ dataUrl: `data:${mime};base64,${m[2].replace(/\s+/g, "")}`, mimeType: mime });
+    }
+    images = ok;
+  } else images = [];
+  const hasImages = images.length > 0;
 
   if ((typeof message !== "string" || !message.trim()) && !hasImages) {
     return json({ error: "메시지가 비어있다능!" }, { status: 400 });
   }
 
   const config = await getConfig(env);
+  // 점검 모드: 가장 먼저 막는다 (검증·필터·계정 조회보다 앞). 크레딧도 쓰지 않는다.
+  if (config.maintenance?.enabled) {
+    return json(
+      { error: config.maintenance.message || "지금은 점검 중이다능! 잠시 후에 다시 와달라능 🛠️", reply: config.maintenance.message, snack: false, maintenance: true },
+      { status: 503 }
+    );
+  }
   // 통계는 응답을 늦추지 않게 백그라운드로 기록한다.
   const bg = (p) => (ctx?.waitUntil ? ctx.waitUntil(p) : p);
 
@@ -267,20 +287,6 @@ async function handleChatInner(request, env, ctx) {
   const tier = normalizeTier(model);
   const realModel = MODEL_IDS[provider]?.[tier];
   const cost = computeCost(config, provider, tier, hasImages ? images.length : 0);
-
-  if (config.maintenance?.enabled) {
-    return json(
-      {
-        reply: config.maintenance.message,
-        credits: acct.balance,
-        cap: effectiveCap,
-        isSmart,
-        snack: false,
-        maintenance: true,
-      },
-      { status: 503 }
-    );
-  }
 
   // 게스트 기능 제한: 이미지 첨부, 고급 모델(딥씽킹/스토리)은 로그인해야 쓸 수 있다.
   if (isGuest && hasImages && !config.guestImages) {
@@ -741,6 +747,7 @@ export default {
       try {
         const bodyIn = await request.json();
         const config = await getConfig(env);
+        if (config.maintenance?.enabled) return json({ granted: false, maintenance: true, error: config.maintenance.message || "점검 중이다능" }, { status: 503 });
         const acct = await getAccount(request, env, config, bodyIn.uid, bodyIn.idToken);
         // 보너스는 로컬(KV) 기본 크레딧에만 붙고 localCap을 넘지 않는다. 통합 크레딧은 건드리지 않는다.
         let result;
