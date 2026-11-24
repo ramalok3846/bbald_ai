@@ -942,9 +942,12 @@ html, body { height: 100%; }
 .site-banner a { color: inherit; text-decoration: underline; margin-left: 6px; }
 @media (max-width: 720px) { .site-banner { padding: 8px 14px; } }
 
-.maint-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(20,10,10,.72);backdrop-filter:blur(4px)}
-.maint-box{max-width:420px;width:100%;box-sizing:border-box;text-align:center;background:var(--surface,#fff);color:var(--text,#222);border-radius:18px;padding:24px 20px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
-.maint-emoji{font-size:44px}
-.maint-box h2{margin:8px 0}
-.maint-msg{white-space:pre-wrap;word-break:break-word;line-height:1.6}
-.maint-retry{margin-top:12px;padding:10px 16px;border-radius:12px;border:0;background:#d6322e;color:#fff;font:inherit;cursor:pointer}
+.maint-overlay{position:fixed;inset:0;z-index:99999;width:100vw;height:100vh;height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;overflow:auto;background:var(--bg,#fff7f5);color:var(--text,#222)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .maint-overlay{background:#1b1212;color:#f3e9e7}}
+:root[data-theme="dark"] .maint-overlay{background:#1b1212;color:#f3e9e7}
+.maint-box{max-width:520px;width:100%;text-align:center}
+.maint-emoji{font-size:84px;line-height:1}
+.maint-box h2{margin:16px 0 8px;font-size:28px}
+.maint-msg{white-space:pre-wrap;word-break:break-word;line-height:1.7;font-size:17px;margin:0 0 20px}
+.maint-retry{padding:12px 22px;border-radius:14px;border:0;background:#d6322e;color:#fff;font:inherit;font-size:16px;cursor:pointer}
+body.maint-lock{overflow:hidden}

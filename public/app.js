@@ -147,6 +147,7 @@
   // 점검 모드: 화면 전체를 덮고 입력을 막는다 (관리자 설정에서 켜면 새로고침 없이 다음 요청/포커스 때 바로 반영).
   function applyMaintenance(on, message) {
     let ov = document.getElementById("maintOverlay");
+    document.body.classList.toggle("maint-lock", !!on);
     if (!on) { if (ov) ov.remove(); return; }
     if (!ov) {
       ov = document.createElement("div");
