@@ -25,6 +25,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("/admins/adm.json")) return J(true);
   if (url.includes("/admins/")) return J(null);
   if (url.includes("firebasedatabase.app/plans")) return J({});
+  if (url.includes("firebasedatabase.app/settings/bbald-open")) return J(globalThis.__notice ?? null);
   if (url.includes("ramalok.kr/api/billing")) return J({ error: "missing_token" }, 401);
   if (url.includes("api.anthropic.com")) {
     if (providerMode === "auth") return J({ error: { type: "authentication_error", message: "bad key" } }, 401);
@@ -49,10 +50,35 @@ const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJA
 let d2;
 const chat = (b, h) => req("/api/chat", { method: "POST", body: { message: "안녕", provider: "builtin", model: "basic", ...b }, headers: h });
 
+let r, d;
+// ---- 그랜드 오픈 게이트 ----
+{
+  const future = new Date(Date.now() + 3600e3).toISOString().replace(/\.\d+Z$/, "+00:00");
+  const past = new Date(Date.now() - 3600e3).toISOString().replace(/\.\d+Z$/, "+00:00");
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: future, useNotice: false } } }); ok(r.status === 200, "오픈 게이트 설정");
+  r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch?.active === true && d.launch.at > Date.now() && d.launch.version === "v1.0.0", "공개 설정에 카운트다운 정보", JSON.stringify(d.launch));
+  r = await chat({}); d = await jsonOf(r); ok(r.status === 503 && d.launch === true, "오픈 전 채팅 차단", JSON.stringify(d));
+  r = await chat({ uid: "usr", idToken: "usr" }); ok(r.status === 503, "오픈 전 일반 회원도 차단");
+  r = await chat({ uid: "adm", idToken: "admin" }); ok(r.status === 200, "오픈 전 관리자는 통과", r.status);
+  r = await req("/api/bonus", { method: "POST", body: { type: "sticker" } }); ok(r.status === 503, "오픈 전 보너스 차단");
+  r = await req("/api/conversations", { method: "POST", body: { messages: [] }, headers: { "x-user-token": "usr" } }); ok(r.status === 503, "오픈 전 대화 저장 차단");
+  r = await req("/api/conversations", { headers: { "x-user-token": "admin" } }); ok(r.status !== 503, "오픈 전 관리자는 대화 API 통과");
+  r = await req("/api/time"); ok(r.status === 200, "오픈 전에도 time/config는 열림");
+  r = await admin("health"); ok(r.status === 200, "오픈 전 관리자 API 정상");
+  // 공지 일정 따라가기
+  globalThis.__notice = { milestones: [{ at: "2020-01-01T10:00:00" }] };
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: future, useNotice: true } } });
+  r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.active === false && d.launch.at === Date.parse("2020-01-01T10:00:00+09:00"), "PAL 공지 일정(KST) 따라감", JSON.stringify(d.launch));
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: past, useNotice: false } } });
+  r = await chat({}); ok(r.status === 200, "오픈 시각 지나면 자동 개방");
+  r = await admin("config", { method: "POST", body: { launch: { at: "아무거나" } } }); d = await jsonOf(r); ok(d.launch.at === "2026-11-28T10:00:00+09:00", "잘못된 일정은 기본값으로");
+  r = await admin("config", { method: "POST", body: { launch: { enabled: false } } });
+}
+
 // ---- 기본 ----
-let r = await req("/api/config/public"); ok(r.status === 200, "공개 설정");
+r = await req("/api/config/public"); ok(r.status === 200, "공개 설정");
 r = await req("/api/time"); ok(r.status === 200, "time");
-r = await chat({}); let d = await jsonOf(r); ok(r.status === 200 && d.reply, "기본 채팅", JSON.stringify(d));
+r = await chat({}); d = await jsonOf(r); ok(r.status === 200 && d.reply, "기본 채팅", JSON.stringify(d));
 r = await chat({ message: "" }); ok(r.status === 400, "빈 메시지 400");
 r = await chat({ message: "가".repeat(3000) }); ok(r.status === 400, "긴 메시지 400");
 r = await req("/api/credits"); ok(r.status === 200, "credits 조회");

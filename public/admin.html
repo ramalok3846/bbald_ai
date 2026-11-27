@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=30" />
+<link rel="stylesheet" href="admin.css?v=31" />
 </head>
 <body>
 
@@ -150,6 +150,20 @@
 
     <!-- 공지 · 보너스 -->
     <section class="pane" data-pane="content" hidden>
+      <div class="card">
+        <h2>그랜드 오픈 (접속 제한 · 카운트다운)</h2>
+        <p class="note">오픈 시각 전에는 일반 사용자의 채팅·저장·보너스를 막고 카운트다운 화면만 보여줘요. <b>관리자 계정은 로그인하면 미리 입장</b>할 수 있어요. 시각이 지나면 자동으로 열려요.</p>
+        <label class="chk"><input type="checkbox" id="lnOn"><span>오픈 전 접속 제한 켜기</span></label>
+        <label class="chk"><input type="checkbox" id="lnUseNotice"><span>PAL 공지 일정 따라가기 (공지 <code id="lnNoticeIdCode">bbald-open</code> 의 첫 일정)</span></label>
+        <div class="grid">
+          <label class="fld"><span>오픈 일시 (한국 시간)</span><input type="datetime-local" id="lnAt"></label>
+          <label class="fld"><span>버전 표시</span><input type="text" id="lnVersion" maxlength="20" placeholder="v1.0.0"></label>
+        </div>
+        <label class="fld"><span>제목</span><input type="text" id="lnTitle" maxlength="60"></label>
+        <label class="fld"><span>안내 문구</span><textarea id="lnMessage" rows="2" maxlength="300"></textarea></label>
+        <label class="fld"><span>오픈 안내 링크</span><input type="text" id="lnUrl" placeholder="https://www.ramalok.kr/notice?id=bbald-open"></label>
+        <p class="note" id="lnState"></p>
+      </div>
       <div class="card">
         <h2>상단 배너</h2>
         <label class="chk"><input type="checkbox" id="bannerOn"><span>배너 보이기</span></label>
@@ -352,10 +366,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=30"></script>
+<script src="firebase-config.js?v=31"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=30"></script>
-<script type="module" src="admin.js?v=30"></script>
+<script type="module" src="auth.js?v=31"></script>
+<script type="module" src="admin.js?v=31"></script>
 </body>
 </html>

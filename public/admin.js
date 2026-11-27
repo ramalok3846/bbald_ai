@@ -293,6 +293,12 @@
   const split = (s) => String(s || "").split(/[\n,]+/).map((w) => w.trim()).filter(Boolean);
   const fmtTime = (t) => (t ? new Date(t).toLocaleString("ko-KR", { hour12: false }) : "—");
   let replies = [], notices = [];
+  // 저장된 ISO(+09:00 등) → 한국 시간의 datetime-local 값, 그 반대
+  function isoToKstInput(iso) {
+    const ms = Date.parse(iso || ""); if (!Number.isFinite(ms)) return "";
+    return new Date(ms + 9 * 3600e3).toISOString().slice(0, 16);
+  }
+  const kstInputToIso = (v) => (v ? `${v}:00+09:00` : "");
 
   function fillExtra(c) {
     $("#statsEnabled").checked = c.statsEnabled !== false;
@@ -306,6 +312,17 @@
     $("#sunsetMode").checked = c.prompt.sunsetMode;
     replies = (c.customReplies || []).map((r) => ({ keywords: [...r.keywords], replies: [...r.replies] }));
     renderReplies();
+    const L = c.launch || {};
+    $("#lnOn").checked = !!L.enabled;
+    $("#lnUseNotice").checked = !!L.useNotice;
+    $("#lnNoticeIdCode").textContent = L.noticeId || "bbald-open";
+    $("#lnAt").value = isoToKstInput(L.at);
+    $("#lnVersion").value = L.version || "";
+    $("#lnTitle").value = L.title || "";
+    $("#lnMessage").value = L.message || "";
+    $("#lnUrl").value = L.noticeUrl || "";
+    const ms = Date.parse(L.at || "");
+    $("#lnState").textContent = L.enabled ? (ms > Date.now() ? `현재 오픈 전이에요. (${fmtTime(ms)} 오픈 예정${L.useNotice ? " — PAL 공지에 일정이 있으면 그 시각을 따라가요" : ""})` : "오픈 시각이 지나 지금은 열려 있어요.") : "접속 제한이 꺼져 있어요(항상 열림).";
     $("#bannerOn").checked = c.banner.enabled;
     $("#bannerLevel").value = c.banner.level;
     $("#bannerLink").value = c.banner.link;
@@ -387,6 +404,7 @@
   $("#saveContentBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
     syncNotices();
     return {
+      launch: { enabled: $("#lnOn").checked, useNotice: $("#lnUseNotice").checked, ...($("#lnAt").value ? { at: kstInputToIso($("#lnAt").value) } : {}), version: $("#lnVersion").value, title: $("#lnTitle").value, message: $("#lnMessage").value, noticeUrl: $("#lnUrl").value.trim() },
       banner: { enabled: $("#bannerOn").checked, level: $("#bannerLevel").value, link: $("#bannerLink").value.trim(), text: $("#bannerText").value },
       texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value, keepEmoji: $("#textKeepEmoji").checked },
       bonus: { signupPct: numIn("#bonusSignup"), sticker: { enabled: $("#stEnabled").checked, minPct: numIn("#stMin"), maxPct: numIn("#stMax"), cooldownSec: numIn("#stCool"), minIntervalSec: numIn("#stIntMin"), maxIntervalSec: numIn("#stIntMax") } },
