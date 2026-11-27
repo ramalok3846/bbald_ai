@@ -25,7 +25,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (url.includes("/admins/adm.json")) return J(true);
   if (url.includes("/admins/")) return J(null);
   if (url.includes("firebasedatabase.app/plans")) return J({});
-  if (url.includes("firebasedatabase.app/settings/bbald-open")) return J(globalThis.__notice ?? null);
+  if (url.includes("firebasedatabase.app/settings/notices/bbald-open")) return J(globalThis.__notice ?? null);
   if (url.includes("ramalok.kr/api/billing")) return J({ error: "missing_token" }, 401);
   if (url.includes("api.anthropic.com")) {
     if (providerMode === "auth") return J({ error: { type: "authentication_error", message: "bad key" } }, 401);
@@ -66,12 +66,17 @@ let r, d;
   r = await req("/api/time"); ok(r.status === 200, "오픈 전에도 time/config는 열림");
   r = await admin("health"); ok(r.status === 200, "오픈 전 관리자 API 정상");
   // 공지 일정 따라가기
-  globalThis.__notice = { milestones: [{ at: "2020-01-01T10:00:00" }] };
+  globalThis.__notice = { milestones: [{ at: "2020-01-02T10:00:00" }, { at: "2020-01-01T10:00:00" }] };
   r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: future, useNotice: true } } });
   r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.active === false && d.launch.at === Date.parse("2020-01-01T10:00:00+09:00"), "PAL 공지 일정(KST) 따라감", JSON.stringify(d.launch));
   r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: past, useNotice: false } } });
   r = await chat({}); ok(r.status === 200, "오픈 시각 지나면 자동 개방");
   r = await admin("config", { method: "POST", body: { launch: { at: "아무거나" } } }); d = await jsonOf(r); ok(d.launch.at === "2026-11-28T10:00:00+09:00", "잘못된 일정은 기본값으로");
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: past, useNotice: false } } });
+  r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.active === false && d.launch.celebrate === true && d.launch.celebrateDays === 7, "오픈 직후 7일은 축하 화면 대상", JSON.stringify(d.launch));
+  const old = new Date(Date.now() - 8 * 86400e3).toISOString().replace(/\.\d+Z$/, "+00:00");
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: old, useNotice: false } } });
+  r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.celebrate === false, "7일이 지나면 축하 화면 종료");
   r = await admin("config", { method: "POST", body: { launch: { enabled: false } } });
 }
 

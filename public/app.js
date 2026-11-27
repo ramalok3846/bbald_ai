@@ -268,30 +268,8 @@
     document.getElementById("launchOverlay")?.remove();
     document.body.classList.remove("launch-lock");
   }
-  function applyLaunch() {
-    const L = pubCfg.launch;
-    const verBadge = document.getElementById("verBadge");
-    if (verBadge) verBadge.textContent = pubCfg.version || L?.version || "v1.0.0";
-    const showGate = !!(L && L.active && !launchPreview && !pubCfg.maintenance?.enabled);
-    let ov = document.getElementById("launchOverlay");
-    if (!showGate) {
-      if (ov && !launchCelebrating) removeLaunchOverlay();
-      document.body.classList.toggle("launch-lock", !!ov && launchCelebrating);
-      // 오픈 전에 관리자 미리보기로 들어온 경우 표시
-      let pv = document.getElementById("launchPreviewBar");
-      if (L?.active && launchPreview) {
-        if (!pv) {
-          pv = document.createElement("div");
-          pv.id = "launchPreviewBar";
-          pv.className = "site-banner warn";
-          document.querySelector(".main").insertBefore(pv, document.querySelector(".main").firstChild);
-        }
-        pv.textContent = `오픈 전 미리보기 — ${fmtKst(L.at)} 오픈 예정 (관리자만 입장 중)`;
-      } else pv?.remove();
-      return;
-    }
-    const offset = (L.now || Date.now()) - Date.now();
-    if (!ov) {
+  function buildLaunchOverlay() {
+    let ov;
       ov = document.createElement("div");
       ov.id = "launchOverlay";
       ov.className = "launch-overlay";
@@ -325,7 +303,37 @@
         if (!currentUser) { authBtn.click(); return; }
         revealAdminLink(true);
       });
+    return ov;
+  }
+
+  function applyLaunch() {
+    const L = pubCfg.launch;
+    const verBadge = document.getElementById("verBadge");
+    if (verBadge) verBadge.textContent = pubCfg.version || L?.version || "v1.0.0";
+    const showGate = !!(L && L.active && !launchPreview && !pubCfg.maintenance?.enabled);
+    let ov = document.getElementById("launchOverlay");
+    if (!showGate && L && !L.active && L.celebrate && !celebrateDone && !launchCelebrating && !shareParam && !pubCfg.maintenance?.enabled) {
+      showCelebration();
+      return;
     }
+    if (!showGate) {
+      if (ov && !launchCelebrating) removeLaunchOverlay();
+      document.body.classList.toggle("launch-lock", !!ov && launchCelebrating);
+      // 오픈 전에 관리자 미리보기로 들어온 경우 표시
+      let pv = document.getElementById("launchPreviewBar");
+      if (L?.active && launchPreview) {
+        if (!pv) {
+          pv = document.createElement("div");
+          pv.id = "launchPreviewBar";
+          pv.className = "site-banner warn";
+          document.querySelector(".main").insertBefore(pv, document.querySelector(".main").firstChild);
+        }
+        pv.textContent = `오픈 전 미리보기 — ${fmtKst(L.at)} 오픈 예정 (관리자만 입장 중)`;
+      } else pv?.remove();
+      return;
+    }
+    const offset = (L.now || Date.now()) - Date.now();
+    if (!ov) ov = buildLaunchOverlay();
     document.body.classList.add("launch-lock");
     ov.querySelector(".lv").textContent = pubCfg.version || L.version || "v1.0.0";
     ov.querySelector(".launch-title").textContent = L.title || "빨드 AI 그랜드 오픈";
@@ -348,23 +356,52 @@
     tick();
     launchTimer = setInterval(tick, 250);
   }
-  // 오픈 시각이 되는 순간: 축하 화면 → 잠시 뒤 서비스 열기
-  async function celebrateOpen() {
+  // 축하 화면: 오픈 시각이 되는 순간 + 오픈 후 celebrateDays(기본 7일) 동안 접속할 때마다.
+  // 건너뛰기: 스페이스 키 (또는 버튼/화면 터치 — 키보드가 없는 모바일용).
+  let celebrateDone = false;
+  let celebrateKeyHandler = null;
+  function endCelebration() {
+    if (!launchCelebrating) return;
+    launchCelebrating = false;
+    celebrateDone = true;
+    if (celebrateKeyHandler) { document.removeEventListener("keydown", celebrateKeyHandler, true); celebrateKeyHandler = null; }
     const ov = document.getElementById("launchOverlay");
-    if (!ov || launchCelebrating) return;
+    if (ov) {
+      ov.classList.add("leaving");
+      setTimeout(() => { if (!launchCelebrating) removeLaunchOverlay(); }, 450);
+    }
+    loadPublicConfig();
+  }
+  function showCelebration() {
+    if (launchCelebrating) return;
     launchCelebrating = true;
+    clearInterval(launchTimer);
+    let ov = document.getElementById("launchOverlay");
+    if (!ov) ov = buildLaunchOverlay();
+    ov.classList.remove("leaving");
     ov.classList.add("opened");
+    document.body.classList.add("launch-lock");
+    const L = pubCfg.launch || {};
+    const day = L.at ? Math.max(1, Math.floor(((L.now || Date.now()) - L.at) / 86400000) + 1) : 1;
+    ov.querySelector(".lv").textContent = pubCfg.version || L.version || "v1.0.0";
     ov.querySelector(".launch-confetti").innerHTML = confettiHtml(90);
     ov.querySelector(".launch-title").textContent = `${pubCfg.version || "v1.0.0"} 정식 오픈!`;
-    ov.querySelector(".launch-date").textContent = "빨드 AI가 문을 열었다능";
+    ov.querySelector(".launch-date").textContent = day > 1 ? `빨드 AI 오픈 ${day}일째 — 와줘서 고맙다능` : "빨드 AI가 문을 열었다능";
     ov.querySelector(".launch-msg").textContent = "지금부터 마음껏 빨드랑 놀아달라능!";
     ov.querySelector(".launch-count").hidden = true;
     ov.querySelector(".launch-foot").hidden = true;
-    ov.querySelector(".launch-actions").innerHTML = `<button type="button" class="launch-btn primary" id="launchEnter">${bIcon("bolt")}<span>빨드 만나러 가기</span></button>`;
-    const enter = () => { launchCelebrating = false; try { localStorage.setItem("bbald_v1_welcome", "1"); } catch {} removeLaunchOverlay(); loadPublicConfig(); };
-    ov.querySelector("#launchEnter").addEventListener("click", enter);
-    setTimeout(() => { if (launchCelebrating) enter(); }, 6000);
+    ov.querySelector(".launch-actions").innerHTML = `<button type="button" class="launch-btn primary" id="launchEnter">${bIcon("bolt")}<span>빨드 만나러 가기</span></button><p class="launch-skip"><kbd>Space</kbd> 를 누르면 건너뛰어요</p>`;
+    ov.querySelector("#launchEnter").addEventListener("click", endCelebration);
+    celebrateKeyHandler = (e) => {
+      if (e.code === "Space" || e.key === " ") { e.preventDefault(); e.stopPropagation(); endCelebration(); }
+    };
+    document.addEventListener("keydown", celebrateKeyHandler, true);
+    ov.querySelector("#launchEnter").focus({ preventScroll: true });
+  }
+  // 오픈 시각이 되는 순간 (카운트다운이 0이 됨)
+  async function celebrateOpen() {
     try { await loadPublicConfig(); } catch {}
+    if (!pubCfg.launch?.active) showCelebration();
   }
 
   // 점검 모드: 화면 전체를 덮고 입력을 막는다 (관리자 설정에서 켜면 새로고침 없이 다음 요청/포커스 때 바로 반영).
@@ -411,7 +448,7 @@
     if (pubCfg.launch && !pubCfg.launch.active && pubCfg.launch.enabled && !shareParam) {
       let seen = true;
       try { seen = localStorage.getItem("bbald_v1_welcome") === "1"; } catch {}
-      if (!seen && !launchCelebrating && currentMessages.length === 0) {
+      if (!seen && !launchCelebrating && !pubCfg.launch.celebrate && currentMessages.length === 0) {
         try { localStorage.setItem("bbald_v1_welcome", "1"); } catch {}
         addMessage("assistant", `${pubCfg.version || "v1.0.0"} 그랜드 오픈을 같이 축하해달라능! 오늘도 빨드랑 놀아달라능~`, { extraClass: "snack", skipStore: true });
       }

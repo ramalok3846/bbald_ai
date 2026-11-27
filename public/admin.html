@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=31" />
+<link rel="stylesheet" href="admin.css?v=32" />
 </head>
 <body>
 
@@ -158,6 +158,7 @@
         <div class="grid">
           <label class="fld"><span>오픈 일시 (한국 시간)</span><input type="datetime-local" id="lnAt"></label>
           <label class="fld"><span>버전 표시</span><input type="text" id="lnVersion" maxlength="20" placeholder="v1.0.0"></label>
+          <label class="fld"><span>오픈 후 축하 화면 (일)</span><input type="number" id="lnCelebrate" min="0" max="60"></label>
         </div>
         <label class="fld"><span>제목</span><input type="text" id="lnTitle" maxlength="60"></label>
         <label class="fld"><span>안내 문구</span><textarea id="lnMessage" rows="2" maxlength="300"></textarea></label>
@@ -366,10 +367,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=31"></script>
+<script src="firebase-config.js?v=32"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=31"></script>
-<script type="module" src="admin.js?v=31"></script>
+<script type="module" src="auth.js?v=32"></script>
+<script type="module" src="admin.js?v=32"></script>
 </body>
 </html>
