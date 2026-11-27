@@ -318,12 +318,15 @@
     $("#lnNoticeIdCode").textContent = L.noticeId || "bbald-open";
     $("#lnAt").value = isoToKstInput(L.at);
     $("#lnVersion").value = L.version || "";
+    $("#lnPausedMsg").value = L.pausedMessage || "";
+    $("#lnPauseBtn").disabled = !!L.paused;
+    $("#lnResumeBtn").disabled = !L.paused;
     $("#lnCelebrate").value = L.celebrateDays ?? 7;
     $("#lnTitle").value = L.title || "";
     $("#lnMessage").value = L.message || "";
     $("#lnUrl").value = L.noticeUrl || "";
     const ms = Date.parse(L.at || "");
-    $("#lnState").textContent = L.enabled ? (ms > Date.now() ? `현재 오픈 전이에요. (${fmtTime(ms)} 오픈 예정${L.useNotice ? " — PAL 공지에 일정이 있으면 그 시각을 따라가요" : ""})` : "오픈 시각이 지나 지금은 열려 있어요.") : "접속 제한이 꺼져 있어요(항상 열림).";
+    $("#lnState").textContent = L.enabled && L.paused ? "오픈이 일시중지된 상태예요. (사용자는 접속할 수 없어요)" : L.enabled ? (ms > Date.now() ? `현재 오픈 전이에요. (${fmtTime(ms)} 오픈 예정${L.useNotice ? " — PAL 공지에 일정이 있으면 그 시각을 따라가요" : ""})` : "오픈 시각이 지나 지금은 열려 있어요.") : "접속 제한이 꺼져 있어요(항상 열림).";
     $("#bannerOn").checked = c.banner.enabled;
     $("#bannerLevel").value = c.banner.level;
     $("#bannerLink").value = c.banner.link;
@@ -392,6 +395,13 @@
     if (notices.length && !confirm("지금 편집 중인 목록이 기본 내용으로 바뀌어요. (저장 버튼을 눌러야 실제로 적용돼요) 계속할까요?")) return;
     try { const r = await api("config/seed-notices"); notices = r.items.map((n) => ({ ...n })); renderNotices(); toast("기본 내용을 불러왔어요. 저장을 눌러 주세요"); } catch (err) { toast(err.message); }
   });
+  const setPaused = async (paused) => {
+    if (!confirm(paused ? "오픈을 지금 바로 일시중지할까요? 일반 사용자는 즉시 접속할 수 없게 돼요." : "오픈을 재개할까요? (오픈 시각이 지났다면 바로 열려요)")) return;
+    try { fillForms(await post("config", { launch: { paused, pausedMessage: $("#lnPausedMsg").value } })); toast(paused ? "오픈을 일시중지했어요" : "오픈을 재개했어요"); loadAudit(); }
+    catch (err) { toast(err.message); }
+  };
+  $("#lnPauseBtn").addEventListener("click", () => setPaused(true));
+  $("#lnResumeBtn").addEventListener("click", () => setPaused(false));
   $("#saveStatsBtn").addEventListener("click", (e) => save(e.currentTarget, () => ({ statsEnabled: $("#statsEnabled").checked }), "저장했어요"));
   $("#saveAiBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
     syncReplies();
@@ -405,7 +415,7 @@
   $("#saveContentBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
     syncNotices();
     return {
-      launch: { enabled: $("#lnOn").checked, useNotice: $("#lnUseNotice").checked, ...($("#lnAt").value ? { at: kstInputToIso($("#lnAt").value) } : {}), version: $("#lnVersion").value, celebrateDays: Number($("#lnCelebrate").value), title: $("#lnTitle").value, message: $("#lnMessage").value, noticeUrl: $("#lnUrl").value.trim() },
+      launch: { enabled: $("#lnOn").checked, useNotice: $("#lnUseNotice").checked, ...($("#lnAt").value ? { at: kstInputToIso($("#lnAt").value) } : {}), version: $("#lnVersion").value, celebrateDays: Number($("#lnCelebrate").value), pausedMessage: $("#lnPausedMsg").value, title: $("#lnTitle").value, message: $("#lnMessage").value, noticeUrl: $("#lnUrl").value.trim() },
       banner: { enabled: $("#bannerOn").checked, level: $("#bannerLevel").value, link: $("#bannerLink").value.trim(), text: $("#bannerText").value },
       texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value, keepEmoji: $("#textKeepEmoji").checked },
       bonus: { signupPct: numIn("#bonusSignup"), sticker: { enabled: $("#stEnabled").checked, minPct: numIn("#stMin"), maxPct: numIn("#stMax"), cooldownSec: numIn("#stCool"), minIntervalSec: numIn("#stIntMin"), maxIntervalSec: numIn("#stIntMax") } },

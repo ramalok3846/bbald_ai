@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=32" />
+<link rel="stylesheet" href="admin.css?v=33" />
 </head>
 <body>
 
@@ -163,6 +163,12 @@
         <label class="fld"><span>제목</span><input type="text" id="lnTitle" maxlength="60"></label>
         <label class="fld"><span>안내 문구</span><textarea id="lnMessage" rows="2" maxlength="300"></textarea></label>
         <label class="fld"><span>오픈 안내 링크</span><input type="text" id="lnUrl" placeholder="https://www.ramalok.kr/notice?id=bbald-open"></label>
+        <label class="fld"><span>일시중지 안내 문구</span><textarea id="lnPausedMsg" rows="2" maxlength="300"></textarea></label>
+        <div class="row">
+          <button class="btn btn-ghost" id="lnPauseBtn" type="button">오픈 일시중지</button>
+          <button class="btn btn-primary" id="lnResumeBtn" type="button">오픈 재개</button>
+        </div>
+        <p class="note">일시중지는 오픈 시각과 상관없이 <b>즉시</b> 접속을 막아요(관리자 제외). 재개하면 오픈 시각 기준으로 돌아가고, 이미 시각이 지났다면 바로 열려요. 두 버튼은 누르는 즉시 저장돼요.</p>
         <p class="note" id="lnState"></p>
       </div>
       <div class="card">
@@ -367,10 +373,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=32"></script>
+<script src="firebase-config.js?v=33"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=32"></script>
-<script type="module" src="admin.js?v=32"></script>
+<script type="module" src="auth.js?v=33"></script>
+<script type="module" src="admin.js?v=33"></script>
 </body>
 </html>

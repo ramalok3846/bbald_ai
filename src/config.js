@@ -93,6 +93,8 @@ const DEFAULTS = {
     at: "2026-11-28T10:00:00+09:00",
     useNotice: true,
     noticeId: "bbald-open",
+    paused: false, // true면 오픈 시각과 상관없이 접속을 막는다 ("오픈 일시중지"). 재개하면 시각 기준으로 돌아간다.
+    pausedMessage: "잠시 오픈을 멈췄다능! 준비가 끝나면 다시 알려주겠다능.",
     celebrateDays: 7, // 오픈 후 며칠 동안 접속 때마다 축하 화면을 보여줄지 (0이면 안 보임)
     version: "v1.0.0",
     title: "빨드 AI 그랜드 오픈",
@@ -220,6 +222,8 @@ function merge(p = {}) {
       at: validIso(p.launch?.at) ? p.launch.at : d.launch.at,
       useNotice: bool(p.launch?.useNotice, d.launch.useNotice),
       noticeId: /^[a-z0-9][a-z0-9-]{1,30}$/.test(p.launch?.noticeId || "") ? p.launch.noticeId : d.launch.noticeId,
+      paused: bool(p.launch?.paused, d.launch.paused),
+      pausedMessage: typeof p.launch?.pausedMessage === "string" && p.launch.pausedMessage.trim() ? p.launch.pausedMessage.trim().slice(0, 300) : d.launch.pausedMessage,
       celebrateDays: num(p.launch?.celebrateDays, 0, 60, d.launch.celebrateDays),
       version: typeof p.launch?.version === "string" && p.launch.version.trim() ? p.launch.version.trim().slice(0, 20) : d.launch.version,
       title: typeof p.launch?.title === "string" && p.launch.title.trim() ? p.launch.title.trim().slice(0, 60) : d.launch.title,

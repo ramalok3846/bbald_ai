@@ -77,6 +77,15 @@ let r, d;
   const old = new Date(Date.now() - 8 * 86400e3).toISOString().replace(/\.\d+Z$/, "+00:00");
   r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: old, useNotice: false } } });
   r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.celebrate === false, "7일이 지나면 축하 화면 종료");
+  // 일시중지 / 재개
+  r = await admin("config", { method: "POST", body: { launch: { enabled: true, at: past, useNotice: false } } });
+  r = await chat({}); ok(r.status === 200, "(준비) 오픈 후 정상");
+  r = await admin("config", { method: "POST", body: { launch: { paused: true } } }); d = await jsonOf(r); ok(d.launch.paused === true && d.launch.at === past, "일시중지 저장(다른 값 유지)");
+  r = await req("/api/config/public"); d = await jsonOf(r); ok(d.launch.active === true && d.launch.paused === true && d.launch.celebrate === false, "일시중지 중엔 즉시 게이트", JSON.stringify(d.launch));
+  r = await chat({}); d = await jsonOf(r); ok(r.status === 503 && d.launch === true && /멈췄/.test(d.error), "일시중지 중 채팅 차단 + 안내 문구", JSON.stringify(d));
+  r = await chat({ uid: "adm", idToken: "admin" }); ok(r.status === 200, "일시중지 중에도 관리자 통과");
+  r = await admin("config", { method: "POST", body: { launch: { paused: false } } });
+  r = await chat({}); ok(r.status === 200, "재개하면 바로 열림");
   r = await admin("config", { method: "POST", body: { launch: { enabled: false } } });
 }
 

@@ -41,10 +41,11 @@ export async function launchInfo(env, config, now = Date.now()) {
     const n = await noticeAt(L.noticeId);
     if (n) at = n;
   }
-  const active = !!(L.enabled && at && now < at);
+  const paused = !!(L.enabled && L.paused);
+  const active = paused || !!(L.enabled && at && now < at);
   // 오픈 후 celebrateDays 일 동안은 접속할 때마다 축하 화면을 보여준다.
-  const celebrate = !!(L.enabled && at && now >= at && now < at + L.celebrateDays * 86400000);
-  return { active, celebrate, celebrateDays: L.celebrateDays, enabled: L.enabled, at, now, version: L.version, title: L.title, message: L.message, noticeUrl: L.noticeUrl };
+  const celebrate = !paused && !!(L.enabled && at && now >= at && now < at + L.celebrateDays * 86400000);
+  return { active, paused, pausedMessage: L.pausedMessage, celebrate, celebrateDays: L.celebrateDays, enabled: L.enabled, at, now, version: L.version, title: L.title, message: L.message, noticeUrl: L.noticeUrl };
 }
 
 export async function isLaunchAdmin(token) {
@@ -57,5 +58,5 @@ export async function launchBlock(env, config, token) {
   const info = await launchInfo(env, config);
   if (!info.active) return null;
   if (await isLaunchAdmin(token)) return null;
-  return { launch: true, at: info.at, error: `아직 오픈 전이다능! ${info.title} 시각이 되면 열린다능.` };
+  return { launch: true, at: info.at, error: info.paused ? info.pausedMessage : `아직 오픈 전이다능! ${info.title} 시각이 되면 열린다능.` };
 }
