@@ -1135,3 +1135,6 @@ body.launch-lock { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .launch-bg .orb, .launch-stars span, .launch-mascot img, .launch-mascot .halo, .launch-count em, .launch-confetti i { animation: none !important; }
 }
+.launch-skip { flex-basis: 100%; margin: 6px 0 0; font-size: .8rem; color: rgba(255,255,255,.65); }
+.launch-skip kbd { display: inline-block; padding: 1px 8px; border-radius: 6px; font: inherit; font-weight: 700; font-size: .78rem; color: #fff; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.launch-overlay.leaving { opacity: 0; transition: opacity .45s ease; pointer-events: none; }

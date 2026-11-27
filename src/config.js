@@ -93,6 +93,7 @@ const DEFAULTS = {
     at: "2026-11-28T10:00:00+09:00",
     useNotice: true,
     noticeId: "bbald-open",
+    celebrateDays: 7, // 오픈 후 며칠 동안 접속 때마다 축하 화면을 보여줄지 (0이면 안 보임)
     version: "v1.0.0",
     title: "빨드 AI 그랜드 오픈",
     message: "빨드가 정식 오픈을 준비하고 있다능! 오픈 시각이 되면 자동으로 열린다능.",
@@ -219,6 +220,7 @@ function merge(p = {}) {
       at: validIso(p.launch?.at) ? p.launch.at : d.launch.at,
       useNotice: bool(p.launch?.useNotice, d.launch.useNotice),
       noticeId: /^[a-z0-9][a-z0-9-]{1,30}$/.test(p.launch?.noticeId || "") ? p.launch.noticeId : d.launch.noticeId,
+      celebrateDays: num(p.launch?.celebrateDays, 0, 60, d.launch.celebrateDays),
       version: typeof p.launch?.version === "string" && p.launch.version.trim() ? p.launch.version.trim().slice(0, 20) : d.launch.version,
       title: typeof p.launch?.title === "string" && p.launch.title.trim() ? p.launch.title.trim().slice(0, 60) : d.launch.title,
       message: typeof p.launch?.message === "string" ? p.launch.message.slice(0, 300) : d.launch.message,

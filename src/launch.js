@@ -6,23 +6,27 @@ import { requireAdmin } from "./admin.js";
 const RTDB = "https://pal-inte-db-default-rtdb.asia-southeast1.firebasedatabase.app";
 let noticeCache = { id: "", t: 0, at: null };
 
-// "2026-11-28T10:00:00" (시간대 없음) → 한국 시간으로 본다.
+// PAL 공지 페이지(js/integration-notice.js)와 같은 방식: "2026-11-28T10:00:00" 처럼 시간대가 없는 값은 항상 한국 시간으로 읽는다.
 function parseKst(v) {
-  if (typeof v !== "string" || !v) return null;
-  const iso = /(Z|[+-]\d{2}:\d{2})$/.test(v) ? v : `${v}${v.length === 16 ? ":00" : ""}+09:00`;
-  const ms = Date.parse(iso);
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(v || "").trim());
+  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 9, +m[5], +(m[6] || 0));
+  const ms = Date.parse(String(v || ""));
   return Number.isFinite(ms) ? ms : null;
 }
 
+// 공지는 settings/notices/{id} 에 저장된다 (관리자 > 통합 공지에서 고친 것). 저장된 게 없으면 공지 페이지는 내장 기본값을
+// 쓰므로 여기서는 null → 관리자 설정(launch.at)을 쓴다. 공지의 "가장 이른 일정"이 오픈 시각이다 ({{일정}} 과 같은 값).
 async function noticeAt(id) {
   const now = Date.now();
   if (noticeCache.id === id && now - noticeCache.t < 60_000) return noticeCache.at;
   let at = null;
   try {
-    const r = await fetch(`${RTDB}/settings/${id}.json`, { cache: "no-store" });
+    const r = await fetch(`${RTDB}/settings/notices/${id}.json`, { cache: "no-store" });
     if (r.ok) {
       const j = await r.json();
-      at = parseKst(j?.milestones?.[0]?.at);
+      const list = Array.isArray(j?.milestones) ? j.milestones : j?.milestones && typeof j.milestones === "object" ? Object.values(j.milestones) : [];
+      const times = list.map((m) => parseKst(m?.at)).filter((x) => Number.isFinite(x));
+      if (times.length) at = Math.min(...times);
     }
   } catch {}
   noticeCache = { id, t: now, at };
@@ -31,13 +35,16 @@ async function noticeAt(id) {
 
 export async function launchInfo(env, config, now = Date.now()) {
   const L = config.launch;
-  let at = parseKst(L.at);
+  let at = Date.parse(L.at);
+  if (!Number.isFinite(at)) at = null;
   if (L.useNotice) {
     const n = await noticeAt(L.noticeId);
     if (n) at = n;
   }
   const active = !!(L.enabled && at && now < at);
-  return { active, enabled: L.enabled, at, now, version: L.version, title: L.title, message: L.message, noticeUrl: L.noticeUrl };
+  // 오픈 후 celebrateDays 일 동안은 접속할 때마다 축하 화면을 보여준다.
+  const celebrate = !!(L.enabled && at && now >= at && now < at + L.celebrateDays * 86400000);
+  return { active, celebrate, celebrateDays: L.celebrateDays, enabled: L.enabled, at, now, version: L.version, title: L.title, message: L.message, noticeUrl: L.noticeUrl };
 }
 
 export async function isLaunchAdmin(token) {

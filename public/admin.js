@@ -318,6 +318,7 @@
     $("#lnNoticeIdCode").textContent = L.noticeId || "bbald-open";
     $("#lnAt").value = isoToKstInput(L.at);
     $("#lnVersion").value = L.version || "";
+    $("#lnCelebrate").value = L.celebrateDays ?? 7;
     $("#lnTitle").value = L.title || "";
     $("#lnMessage").value = L.message || "";
     $("#lnUrl").value = L.noticeUrl || "";
@@ -404,7 +405,7 @@
   $("#saveContentBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
     syncNotices();
     return {
-      launch: { enabled: $("#lnOn").checked, useNotice: $("#lnUseNotice").checked, ...($("#lnAt").value ? { at: kstInputToIso($("#lnAt").value) } : {}), version: $("#lnVersion").value, title: $("#lnTitle").value, message: $("#lnMessage").value, noticeUrl: $("#lnUrl").value.trim() },
+      launch: { enabled: $("#lnOn").checked, useNotice: $("#lnUseNotice").checked, ...($("#lnAt").value ? { at: kstInputToIso($("#lnAt").value) } : {}), version: $("#lnVersion").value, celebrateDays: Number($("#lnCelebrate").value), title: $("#lnTitle").value, message: $("#lnMessage").value, noticeUrl: $("#lnUrl").value.trim() },
       banner: { enabled: $("#bannerOn").checked, level: $("#bannerLevel").value, link: $("#bannerLink").value.trim(), text: $("#bannerText").value },
       texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value, keepEmoji: $("#textKeepEmoji").checked },
       bonus: { signupPct: numIn("#bonusSignup"), sticker: { enabled: $("#stEnabled").checked, minPct: numIn("#stMin"), maxPct: numIn("#stMax"), cooldownSec: numIn("#stCool"), minIntervalSec: numIn("#stIntMin"), maxIntervalSec: numIn("#stIntMax") } },
