@@ -80,6 +80,14 @@
   const noticesBtn = document.getElementById("noticesBtn");
   const noticesBackdrop = document.getElementById("noticesBackdrop");
   const closeNotices = document.getElementById("closeNotices");
+  const guideBtn = document.getElementById("guideBtn");
+  const eventsBtn = document.getElementById("eventsBtn");
+  const infoTabs = document.getElementById("infoTabs");
+  const infoBody = document.getElementById("infoBody");
+  const infoTitle = document.getElementById("infoTitle");
+  const noticesDot = document.getElementById("noticesDot");
+  const adminLink = document.getElementById("adminLink");
+  const sidebarClose = document.getElementById("sidebarClose");
 
   const sidebar = document.getElementById("sidebar");
   const sidebarBackdrop = document.getElementById("sidebarBackdrop");
@@ -144,6 +152,90 @@
   }
 
   // 관리자가 정한 배너/공지/문구/AI 사용 여부/제한값을 화면에 반영한다.
+  // ---------------- 안내 창: 사용법 / 공지사항 / 이벤트 (관리자가 편집) ----------------
+  const INFO_KINDS = { guide: "📖 사용법", notice: "📢 공지사항", event: "🎁 이벤트" };
+  let infoKind = "guide";
+  const SEEN_KEY = "bbald_seen_info";
+  function fillTpl(text) {
+    const sb = pubCfg.stickerBonus || {};
+    return String(text || "")
+      .replace(/\{signup\}/g, pubCfg.signupPct ?? 100)
+      .replace(/\{stickerMin\}/g, sb.minPct ?? 10)
+      .replace(/\{stickerMax\}/g, sb.maxPct ?? 30);
+  }
+  function infoSignature() {
+    return (pubCfg.notices || []).filter((n) => n.kind !== "guide").map((n) => `${n.id}:${(n.title || "").length}:${(n.body || "").length}`).join("|");
+  }
+  function updateInfoDot() {
+    let seen = "";
+    try { seen = localStorage.getItem(SEEN_KEY) || ""; } catch {}
+    const sig = infoSignature();
+    noticesDot.hidden = !sig || sig === seen;
+  }
+  function markInfoSeen() {
+    try { localStorage.setItem(SEEN_KEY, infoSignature()); } catch {}
+    noticesDot.hidden = true;
+  }
+  function renderInfo() {
+    infoTabs.querySelectorAll("button").forEach((b) => {
+      const on = b.dataset.kind === infoKind;
+      b.setAttribute("aria-selected", String(on));
+      b.classList.toggle("active", on);
+    });
+    infoTitle.textContent = INFO_KINDS[infoKind] || "안내";
+    infoBody.innerHTML = "";
+    const list = Array.isArray(pubCfg.notices) ? pubCfg.notices.filter((n) => (n.kind || "notice") === infoKind) : null;
+    if (!list || !list.length) {
+      const p = document.createElement("p");
+      p.className = "hint info-empty";
+      p.textContent = list ? "아직 올라온 글이 없다능! 🦕" : "불러오지 못했다능... 잠시 후 다시 열어달라능!";
+      infoBody.appendChild(p);
+    } else {
+      list.forEach((n, i) => {
+        const art = document.createElement("article");
+        art.className = `notice-card kind-${infoKind}`;
+        art.style.animationDelay = `${Math.min(i, 8) * 40}ms`;
+        const h = document.createElement("h3");
+        h.textContent = `${n.emoji ? n.emoji + " " : ""}${n.pinned ? "📌 " : ""}${n.title}`;
+        const pEl = document.createElement("p");
+        pEl.textContent = fillTpl(n.body);
+        art.append(h, pEl);
+        infoBody.appendChild(art);
+      });
+    }
+    updateInfoDot();
+  }
+  function openInfo(kind) {
+    infoKind = INFO_KINDS[kind] ? kind : "guide";
+    renderInfo();
+    openModal(noticesBackdrop);
+    if (infoKind !== "guide") markInfoSeen();
+    infoBody.scrollTop = 0;
+  }
+  infoTabs.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-kind]");
+    if (!b) return;
+    infoKind = b.dataset.kind;
+    renderInfo();
+    if (infoKind !== "guide") markInfoSeen();
+    infoBody.scrollTop = 0;
+  });
+
+  // ---------------- 모달 열기/닫기 (애니메이션 + Esc + 포커스) ----------------
+  let lastFocus = null;
+  function openModal(backdrop) {
+    lastFocus = document.activeElement;
+    backdrop.classList.add("open");
+    backdrop.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
+  function closeModal(backdrop) {
+    backdrop.classList.remove("open");
+    backdrop.setAttribute("aria-hidden", "true");
+    if (!document.querySelector(".modal-backdrop.open")) document.body.classList.remove("modal-open");
+    try { lastFocus?.focus?.(); } catch {}
+  }
+
   // 점검 모드: 화면 전체를 덮고 입력을 막는다 (관리자 설정에서 켜면 새로고침 없이 다음 요청/포커스 때 바로 반영).
   function applyMaintenance(on, message) {
     let ov = document.getElementById("maintOverlay");
@@ -183,22 +275,7 @@
       banner.hidden = false;
     } else if (banner) banner.hidden = true;
 
-    if (Array.isArray(pubCfg.notices) && pubCfg.notices.length) {
-      const body = document.querySelector("#noticesBackdrop .notices-body");
-      if (body) {
-        body.innerHTML = "";
-        for (const n of pubCfg.notices) {
-          const art = document.createElement("article");
-          art.className = "notice-card";
-          const h = document.createElement("h3");
-          h.textContent = `${n.emoji ? n.emoji + " " : ""}${n.pinned ? "📌 " : ""}${n.title}`;
-          const pEl = document.createElement("p");
-          pEl.textContent = n.body;
-          art.append(h, pEl);
-          body.appendChild(art);
-        }
-      }
-    }
+    renderInfo();
     if (pubCfg.texts?.placeholder) input.placeholder = pubCfg.texts.placeholder;
     if (pubCfg.limits?.maxMessageChars) input.maxLength = pubCfg.limits.maxMessageChars;
 
@@ -739,15 +816,45 @@
     }
     renderAccount();
     renderConvList();
+    revealAdminLink();
   });
 
+  // 관리자 계정이면 사이드바에 "관리자" 메뉴를 보여준다 (일반 사용자에게는 숨김).
+  async function revealAdminLink() {
+    adminLink.hidden = true;
+    if (!currentUser) return;
+    try {
+      const t = await getFreshIdToken();
+      if (!t) return;
+      const r = await fetch("api/admin/me", { headers: { "x-admin-token": t } });
+      adminLink.hidden = !r.ok;
+    } catch {}
+  }
+
   authBtn.addEventListener("click", async () => {
-    if (!window.bbaldAuth) return;
-    if (currentUser) {
-      await window.bbaldAuth.signOutUser();
-    } else {
-      const result = await window.bbaldAuth.signInGoogle();
-      if (result?.googleAccessToken) googleGeminiAccessToken = result.googleAccessToken;
+    if (!window.bbaldAuth) {
+      addMessage("assistant", "로그인 모듈을 불러오는 중이다능... 잠시 후 다시 눌러달라능!", { extraClass: "snack", skipStore: true });
+      return;
+    }
+    if (authBtn.disabled) return;
+    const label = authBtn.textContent;
+    authBtn.disabled = true;
+    try {
+      if (currentUser) {
+        if (!confirm("로그아웃할까?")) return;
+        authBtn.textContent = "로그아웃 중…";
+        await window.bbaldAuth.signOutUser();
+      } else {
+        authBtn.textContent = "로그인 창 여는 중…";
+        const result = await window.bbaldAuth.signInGoogle();
+        if (result?.googleAccessToken) googleGeminiAccessToken = result.googleAccessToken;
+      }
+    } catch (err) {
+      addMessage("assistant", `로그인에 실패했다능... (${err?.message || err}) 팝업 차단을 풀고 다시 해달라능!`, { extraClass: "error", skipStore: true });
+    } finally {
+      authBtn.disabled = false;
+      authBtn.textContent = currentUser ? "로그아웃" : "로그인";
+      if (!currentUser && authBtn.textContent === label) authBtn.textContent = "로그인";
     }
   });
 
@@ -1294,38 +1401,73 @@
   });
   updateSecretBadge();
 
-  // ---------------- 설정 모달 ----------------
+  // ---------------- 설정 / 안내 모달 ----------------
   settingsBtn.addEventListener("click", () => {
-    settingsBackdrop.classList.add("open");
+    openModal(settingsBackdrop);
     refreshUsageDetail();
     refreshBillingSection();
   });
-  closeSettings.addEventListener("click", () => settingsBackdrop.classList.remove("open"));
-  settingsBackdrop.addEventListener("click", (e) => {
-    if (e.target === settingsBackdrop) settingsBackdrop.classList.remove("open");
+  closeSettings.addEventListener("click", () => closeModal(settingsBackdrop));
+  settingsBackdrop.addEventListener("click", (e) => { if (e.target === settingsBackdrop) closeModal(settingsBackdrop); });
+
+  noticesBtn.addEventListener("click", () => openInfo("notice"));
+  eventsBtn.addEventListener("click", () => openInfo("event"));
+  guideBtn.addEventListener("click", () => openInfo("guide"));
+  closeNotices.addEventListener("click", () => closeModal(noticesBackdrop));
+  noticesBackdrop.addEventListener("click", (e) => { if (e.target === noticesBackdrop) closeModal(noticesBackdrop); });
+
+  // Esc: 열린 창 → 사이드바 순서로 닫는다.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const open = Array.from(document.querySelectorAll(".modal-backdrop.open")).pop();
+    if (!lightbox.hidden) closeLightbox();
+    else if (open) closeModal(open);
+    else if (sidebar.classList.contains("open")) closeSidebar();
   });
 
-  // ---------------- 공지사항 모달 ----------------
-  noticesBtn.addEventListener("click", () => noticesBackdrop.classList.add("open"));
-  closeNotices.addEventListener("click", () => noticesBackdrop.classList.remove("open"));
-  noticesBackdrop.addEventListener("click", (e) => {
-    if (e.target === noticesBackdrop) noticesBackdrop.classList.remove("open");
-  });
-
-  // ---------------- 모바일 사이드바 토글 ----------------
+  // ---------------- 모바일 사이드바 (햄버거 → X 모션, 슬라이드, 스와이프로 닫기) ----------------
+  function openSidebar() {
+    sidebar.classList.add("open");
+    sidebarBackdrop.classList.add("open");
+    menuToggle.classList.add("open");
+    menuToggle.setAttribute("aria-expanded", "true");
+    menuToggle.setAttribute("aria-label", "메뉴 닫기");
+    document.body.classList.add("menu-open");
+  }
   function closeSidebar() {
     sidebar.classList.remove("open");
     sidebarBackdrop.classList.remove("open");
+    menuToggle.classList.remove("open");
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", "메뉴 열기");
+    document.body.classList.remove("menu-open");
+    sidebar.style.transform = "";
   }
-  menuToggle.addEventListener("click", () => {
-    sidebar.classList.add("open");
-    sidebarBackdrop.classList.add("open");
-  });
+  menuToggle.addEventListener("click", () => (sidebar.classList.contains("open") ? closeSidebar() : openSidebar()));
+  sidebarClose.addEventListener("click", closeSidebar);
   sidebarBackdrop.addEventListener("click", closeSidebar);
-  sidebar.querySelectorAll("button").forEach((el) => {
-    if (el.id === "incognitoBtn") return; // 자체 핸들러가 있고, 클릭해도 사이드바를 닫을 필요는 없음
+  sidebar.querySelectorAll("button, a").forEach((el) => {
+    if (el.id === "incognitoBtn" || el.id === "sidebarClose") return; // 자체 핸들러가 있거나 위에서 처리
     el.addEventListener("click", closeSidebar);
   });
+  window.addEventListener("resize", () => { if (window.innerWidth > 720) closeSidebar(); });
+  // 사이드바를 왼쪽으로 밀면 닫힌다.
+  {
+    let sx = null, sy = 0, dx = 0;
+    sidebar.addEventListener("touchstart", (e) => { if (!sidebar.classList.contains("open")) return; sx = e.touches[0].clientX; sy = e.touches[0].clientY; dx = 0; sidebar.style.transition = "none"; }, { passive: true });
+    sidebar.addEventListener("touchmove", (e) => {
+      if (sx === null) return;
+      dx = e.touches[0].clientX - sx;
+      if (Math.abs(e.touches[0].clientY - sy) > Math.abs(dx)) return;
+      if (dx < 0) sidebar.style.transform = `translateX(${dx}px)`;
+    }, { passive: true });
+    sidebar.addEventListener("touchend", () => {
+      if (sx === null) return;
+      sidebar.style.transition = "";
+      if (dx < -60) closeSidebar(); else sidebar.style.transform = "";
+      sx = null;
+    });
+  }
 
   // ---------------- 모델 설명 (상세설정: 실제 모델명 + 비용 배율을 같이 보여준다) ----------------
   function updateModelDesc() {
@@ -1358,30 +1500,49 @@
   // ---------------- 무작위 빨드 스티커 이벤트 ----------------
   const stickerBadge = stickerBtn.querySelector(".sticker-badge");
   let stickerTimer = null;
-  function scheduleSticker() {
+  let stickerHideTimer = null;
+  const STICKER_SHOW_MS = 6000;
+  function stickerEnabled() {
+    return pubCfg.stickerBonus?.enabled !== false && !pubCfg.maintenance?.enabled && !shareParam;
+  }
+  function scheduleSticker(first = false) {
+    clearTimeout(stickerTimer);
     const sb = pubCfg.stickerBonus || {};
     const min = (sb.minIntervalSec || 90) * 1000;
     const max = Math.max(min, (sb.maxIntervalSec || 240) * 1000);
-    const delay = min + Math.random() * (max - min);
+    // 처음 한 번은 금방 보여서 "이벤트가 있구나"를 알 수 있게 한다.
+    const delay = first ? 20000 + Math.random() * 25000 : min + Math.random() * (max - min);
     stickerTimer = setTimeout(showSticker, delay);
   }
+  function hideSticker() {
+    clearTimeout(stickerHideTimer);
+    stickerBtn.hidden = true;
+    stickerBtn.classList.remove("show");
+  }
   function showSticker() {
+    // 안 보이는 탭 / 창이 열려 있을 때 / 기능이 꺼졌을 때는 건너뛰고 잠시 뒤에 다시 시도한다.
+    if (!stickerEnabled() || document.hidden || document.body.classList.contains("modal-open") || document.body.classList.contains("menu-open")) {
+      stickerTimer = setTimeout(showSticker, 15000);
+      return;
+    }
     const bounds = chatWrap.getBoundingClientRect();
-    const maxX = Math.max(0, bounds.width - 64);
-    const maxY = Math.max(0, bounds.height - 64);
-    stickerBtn.style.left = `${Math.random() * maxX}px`;
-    stickerBtn.style.top = `${Math.random() * maxY}px`;
+    const size = 64;
+    stickerBtn.style.left = `${Math.max(8, Math.random() * Math.max(0, bounds.width - size - 16))}px`;
+    stickerBtn.style.top = `${Math.max(8, Math.random() * Math.max(0, bounds.height - size - 16))}px`;
     stickerBadge.textContent = "🎁";
+    stickerBtn.style.setProperty("--sticker-ms", `${STICKER_SHOW_MS}ms`);
     stickerBtn.hidden = false;
+    stickerBtn.classList.remove("show");
+    void stickerBtn.offsetWidth; // 애니메이션 다시 시작
+    stickerBtn.classList.add("show");
 
-    const hideTimer = setTimeout(() => {
-      stickerBtn.hidden = true;
+    stickerHideTimer = setTimeout(() => {
+      hideSticker();
       scheduleSticker();
-    }, 4000);
+    }, STICKER_SHOW_MS);
 
     stickerBtn.onclick = async () => {
-      clearTimeout(hideTimer);
-      stickerBtn.hidden = true;
+      hideSticker();
       try {
         const idToken = currentUser ? await getFreshIdToken() : null;
         const res = await fetch("api/bonus", {
@@ -1389,21 +1550,25 @@
           headers: { "content-type": "application/json", ...guestHeaders() },
           body: JSON.stringify({ type: "sticker", uid: currentUser?.uid || null, idToken }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (data.granted) {
           renderCredits(data.balance, data.cap);
-          const pctGained = Math.round((data.amount / (data.cap || creditsCap)) * 100);
-          addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 사용량 +${pctGained}% 선물이다능! 🎁🦕`, { extraClass: "snack" });
+          const pctGained = Math.max(1, Math.round((data.amount / (data.cap || creditsCap || 100)) * 100));
+          addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 사용량 +${pctGained}% 선물이다능! 🎁🦕`, { extraClass: "snack", skipStore: true });
+        } else if (data.full) {
+          addMessage("assistant", "빨드 파워가 이미 꽉 차 있다능! 다음에 줄어들면 또 찾아줘~ 🦕", { extraClass: "snack", skipStore: true });
+        } else if (data.disabled || data.maintenance) {
+          addMessage("assistant", "스티커 이벤트는 지금 쉬고 있다능! 🛠️", { extraClass: "snack", skipStore: true });
         } else {
-          addMessage("assistant", "어? 방금 막 빨드 간식 다 먹었나보다... 쬐끔 있다 또 찾아봐줘!", { extraClass: "snack" });
+          addMessage("assistant", "어? 방금 막 빨드 간식 다 먹었나보다... 쬐끔 있다 또 찾아봐줘!", { extraClass: "snack", skipStore: true });
         }
       } catch {
-        addMessage("assistant", "스티커를 못 받았다능... 네트워크가 이상한가봐!", { extraClass: "error" });
+        addMessage("assistant", "스티커를 못 받았다능... 네트워크가 이상한가봐!", { extraClass: "error", skipStore: true });
       }
       scheduleSticker();
     };
   }
-  scheduleSticker();
+  scheduleSticker(true);
 
   // ---------------- 초기 상태: 서버 크레딧 동기화 + 인사 ----------------
   // index.html에 미리 박아둔 인사 말풍선은 지우고 JS가 다시 그린다 (중복 방지).
@@ -1437,7 +1602,7 @@
   const shareLinkFor = (shareId) => `${location.origin}${location.pathname}?share=${shareId}`;
 
   async function openShare() {
-    shareBackdrop.classList.add("open");
+    openModal(shareBackdrop);
     shareLinkRow.hidden = true;
     shareVisibility.disabled = true;
     const publicOpt = shareVisibility.querySelector('option[value="public"]');
@@ -1465,8 +1630,8 @@
     }
   }
   shareBtn?.addEventListener("click", openShare);
-  document.getElementById("closeShare")?.addEventListener("click", () => shareBackdrop.classList.remove("open"));
-  shareBackdrop?.addEventListener("click", (e) => { if (e.target === shareBackdrop) shareBackdrop.classList.remove("open"); });
+  document.getElementById("closeShare")?.addEventListener("click", () => closeModal(shareBackdrop));
+  shareBackdrop?.addEventListener("click", (e) => { if (e.target === shareBackdrop) closeModal(shareBackdrop); });
   shareVisibility?.addEventListener("change", async () => {
     shareVisibility.disabled = true;
     try {

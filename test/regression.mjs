@@ -133,6 +133,24 @@ r = await admin("me"); ok(r.status === 200, "점검 중에도 관리자 접근 �
 r = await admin("config", { method: "POST", body: { maintenance: { enabled: false } } });
 r = await chat({}); ok(r.status === 200, "점검 끄면 채팅 재개");
 
+// ---- 공지/이벤트/사용법 + 스티커 ----
+await admin("config/reset", { method: "POST", body: {} });
+r = await req("/api/config/public"); d = await jsonOf(r);
+ok(["guide", "event", "notice"].every((k) => d.notices.some((n) => n.kind === k)), "기본 공지/이벤트/사용법 노출", JSON.stringify(d.notices?.map((n) => n.kind)));
+r = await admin("config/seed-notices"); d = await jsonOf(r); ok(r.status === 200 && d.items.length >= 5, "기본 내용 불러오기");
+r = await admin("config", { method: "POST", body: { notices: [{ id: "x", kind: "event", title: "내 이벤트", body: "본문 {signup}" }] } });
+r = await req("/api/config/public"); d = await jsonOf(r); ok(d.notices.length === 1 && d.notices[0].kind === "event", "관리자가 저장하면 그 목록만 보임", JSON.stringify(d.notices));
+r = await admin("config", { method: "POST", body: { notices: [] } }); r = await req("/api/config/public"); d = await jsonOf(r); ok(d.notices.length === 0, "전부 지우면 빈 목록(기본값으로 되돌아가지 않음)");
+{
+  const SB = (id) => req("/api/bonus", { method: "POST", body: { type: "sticker" }, headers: { "x-guest-id": id } });
+  const gid = "stickerguest0001x";
+  await admin("config", { method: "POST", body: { startingCreditsGuest: 100 } });
+  r = await SB(gid); d = await jsonOf(r); ok(d.granted === false && d.full === true, "가득 차 있으면 스티커 안 줌", JSON.stringify(d));
+  await req("/api/chat", { method: "POST", body: { message: "안녕", provider: "builtin", model: "basic" }, headers: { "x-guest-id": gid } });
+  await admin("adjust", { method: "POST", body: { identity: "guest:" + gid, setTo: 40 } });
+  r = await SB(gid); d = await jsonOf(r); ok(d.granted === true && d.amount > 0 && d.balance === 40 + d.amount, "줄어들었으면 실제로 늘어남", JSON.stringify(d));
+}
+
 // ---- 설정 초기화 ----
 r = await admin("config/reset", { method: "POST", body: {} }); d = await jsonOf(r); ok(r.status === 200 && d.maintenance.enabled === false && d.customReplies.length === 0, "설정 초기화");
 

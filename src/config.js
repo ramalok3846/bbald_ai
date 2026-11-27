@@ -11,6 +11,25 @@ const CONFIG_KEY = "config:runtime";
 export const PROVIDERS = ["builtin", "cloudflare", "anthropic", "openai", "gemini"];
 export const TIER_KEYS = ["lite", "basic", "deep", "story"];
 
+export const SEED_NOTICES = [
+  { id: "ev-sticker", kind: "event", emoji: "🎁", title: "랜덤 빨드 스티커 이벤트", pinned: true, visible: true,
+    body: "채팅 중 화면 아무 곳에나 빨드 스티커가 잠깐 나타난다능! 놓치기 전에 눌러바~ 빨드 파워를 {stickerMin}~{stickerMax}% 랜덤으로 채워준다능. (파워가 가득 차 있을 땐 줄 게 없다능!)" },
+  { id: "ev-signup", kind: "event", emoji: "🎉", title: "첫 로그인 보너스", pinned: false, visible: true,
+    body: "PAL 통합 계정으로 처음 로그인하면 계정당 1회, 빨드 파워를 {signup}% 채워준다능! 게스트로도 쓸 수 있지만 로그인하면 대화도 저장되고 더 든든하다능." },
+  { id: "nt-sunset", kind: "notice", emoji: "🌇", title: "노을 모드 안내", pinned: false, visible: true,
+    body: "한국시간 오후 3시가 지나면 빨드가 아주 가끔 조금 또렷해진다능 (완전 똑똑해지는 건 아니고 살짝!). 그 전엔 평소처럼 멍청하고 웃긴 빨드를 만날 수 있다능." },
+  { id: "gd-start", kind: "guide", emoji: "💬", title: "대화하기", pinned: true, visible: true,
+    body: "아래 입력창에 말을 걸고 Ctrl+Enter(맥은 ⌘+Enter) 또는 ↑ 버튼으로 보내면 된다능. Enter는 줄바꿈이다능!" },
+  { id: "gd-brain", kind: "guide", emoji: "🧠", title: "AI 두뇌 고르기", pinned: false, visible: true,
+    body: "위쪽에서 AI(빨드 기본·Cloudflare·Claude·ChatGPT·Gemini)와 두뇌 단계(라이트/기본/딥씽킹/스토리)를 고를 수 있다능. 단계가 높을수록 똑똑하지만 빨드 파워가 더 든다능. Claude·ChatGPT·Gemini는 설정에서 내 API 키를 넣어야 한다능." },
+  { id: "gd-image", kind: "guide", emoji: "🖼️", title: "사진 보내기", pinned: false, visible: true,
+    body: "📎로 사진을 여러 장 붙이거나 🔗로 이미지 주소를 붙여넣을 수 있다능. 붙여넣기(Ctrl+V)도 된다능. 사진은 로그인해야 쓸 수 있을 수도 있다능. 클릭하면 크게 보고 저장도 할 수 있다능!" },
+  { id: "gd-power", kind: "guide", emoji: "⚡", title: "빨드 파워(크레딧)", pinned: false, visible: true,
+    body: "대화할 때마다 빨드 파워가 줄어든다능. 시간이 지나면 저절로 다시 차오르고, 스티커·로그인 보너스로도 채울 수 있다능. PAL 요금제·쿠폰이 있으면 더 많이 쓸 수 있다능." },
+  { id: "gd-save", kind: "guide", emoji: "🔗", title: "저장 · 공유 · 시크릿", pinned: false, visible: true,
+    body: "로그인하면 대화가 자동 저장돼서 왼쪽 목록에서 다시 볼 수 있다능. 🕶️ 시크릿은 저장 안 되고, 상단 공유 버튼으로 링크 공유(글만)도 할 수 있다능." },
+];
+
 const DEFAULTS = {
   dailyLimits: { builtin: 300, cloudflare: 150, anthropic: 500, openai: 500, gemini: 500 },
   dailyLimitsGuest: { builtin: 60, cloudflare: 30, anthropic: 80, openai: 80, gemini: 80 },
@@ -61,7 +80,9 @@ const DEFAULTS = {
   },
 
   // 공지사항(설정 창 옆 "공지사항"에 보임), 맨 위 배너, 문구
+  // kind: notice(공지) | event(이벤트) | guide(사용법). 본문에 {signup} {stickerMin} {stickerMax} 를 쓰면 현재 보너스 설정 값으로 바뀐다.
   notices: [],
+  noticesSeeded: false, // 관리자가 한 번이라도 공지를 저장했는지 (그 전에는 기본 공지/이벤트/사용법을 보여준다)
   banner: { enabled: false, text: "", level: "info", link: "" },
   texts: { greeting: "", placeholder: "" },
 
@@ -102,14 +123,15 @@ function cleanNotices(arr) {
   return arr
     .map((n, i) => ({
       id: String(n?.id || `n${i}`).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 20) || `n${i}`,
+      kind: ["notice", "event", "guide"].includes(n?.kind) ? n.kind : "notice",
       title: String(n?.title || "").trim().slice(0, 60),
-      body: String(n?.body || "").trim().slice(0, 600),
+      body: String(n?.body || "").trim().slice(0, 1000),
       emoji: String(n?.emoji || "").trim().slice(0, 4),
       visible: n?.visible !== false,
       pinned: n?.pinned === true,
     }))
     .filter((n) => n.title || n.body)
-    .slice(0, 20);
+    .slice(0, 60);
 }
 
 function merge(p = {}) {
@@ -175,7 +197,9 @@ function merge(p = {}) {
         ),
       },
     },
-    notices: cleanNotices(p.notices),
+    noticesSeeded: p.noticesSeeded === true,
+    // 관리자가 아직 공지를 저장한 적이 없으면 기본 공지/이벤트/사용법을 보여준다.
+    notices: p.noticesSeeded === true || cleanNotices(p.notices).length ? cleanNotices(p.notices) : cleanNotices(SEED_NOTICES),
     banner: {
       enabled: bool(p.banner?.enabled, d.banner.enabled),
       text: typeof p.banner?.text === "string" ? p.banner.text.slice(0, 200) : d.banner.text,
@@ -208,6 +232,7 @@ export async function setConfig(env, patch) {
     if (!(k in DEFAULTS)) continue;
     next[k] = v && typeof v === "object" && !Array.isArray(v) ? { ...current[k], ...v } : v;
   }
+  if (patch && "notices" in patch) next.noticesSeeded = true;
   const clean = merge(next);
   await env.RATE_LIMIT_KV.put(CONFIG_KEY, JSON.stringify(clean));
   return clean;
@@ -225,6 +250,7 @@ export function publicConfig(config) {
     limits: { maxMessageChars: config.limits.maxMessageChars, maxImages: config.limits.maxImages },
     stickerBonus: config.bonus.sticker,
     notices: config.notices.filter((n) => n.visible).sort((a, b) => Number(b.pinned) - Number(a.pinned)),
+    signupPct: config.bonus.signupPct,
     banner: config.banner,
     texts: config.texts,
     refillIntervalMin: config.refillIntervalMin,

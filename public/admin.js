@@ -345,10 +345,11 @@
     $("#noticesList").innerHTML = notices.map((n, i) => `
       <div class="sub" data-i="${i}">
         <div class="grid">
+          <label class="fld"><span>종류</span><select class="nk"><option value="notice" ${n.kind === "notice" ? "selected" : ""}>공지사항</option><option value="event" ${n.kind === "event" ? "selected" : ""}>이벤트</option><option value="guide" ${n.kind === "guide" ? "selected" : ""}>사용법</option></select></label>
           <label class="fld"><span>이모지</span><input class="ne" maxlength="4" value="${esc(n.emoji)}"></label>
           <label class="fld"><span>제목</span><input class="nt" maxlength="80" value="${esc(n.title)}"></label>
         </div>
-        <label class="fld"><span>내용</span><textarea class="nb" rows="3" maxlength="800">${esc(n.body)}</textarea></label>
+        <label class="fld"><span>내용</span><textarea class="nb" rows="4" maxlength="1000">${esc(n.body)}</textarea></label>
         <label class="chk"><input type="checkbox" class="nv" ${n.visible ? "checked" : ""}><span>보이기</span></label>
         <label class="chk"><input type="checkbox" class="np" ${n.pinned ? "checked" : ""}><span>맨 위 고정</span></label>
         <button type="button" class="btn btn-ghost btn-sm ndel">삭제</button>
@@ -357,17 +358,22 @@
   function syncNotices() {
     notices = $$("#noticesList .sub").map((el, i) => ({
       id: notices[i]?.id || `n${Date.now().toString(36)}${i}`,
+      kind: el.querySelector(".nk").value,
       emoji: el.querySelector(".ne").value, title: el.querySelector(".nt").value, body: el.querySelector(".nb").value,
       visible: el.querySelector(".nv").checked, pinned: el.querySelector(".np").checked,
     }));
   }
-  $("#addNoticeBtn").addEventListener("click", () => { syncNotices(); notices.unshift({ id: `n${Date.now().toString(36)}`, emoji: "📢", title: "", body: "", visible: true, pinned: false }); renderNotices(); });
+  $("#addNoticeBtn").addEventListener("click", () => { syncNotices(); notices.unshift({ id: `n${Date.now().toString(36)}`, kind: "notice", emoji: "📢", title: "", body: "", visible: true, pinned: false }); renderNotices(); });
   $("#noticesList").addEventListener("click", (e) => {
     const b = e.target.closest(".ndel"); if (!b) return;
     const i = Number(b.closest(".sub").dataset.i);
     syncNotices(); notices.splice(i, 1); renderNotices();
   });
 
+  $("#seedNoticeBtn").addEventListener("click", async () => {
+    if (notices.length && !confirm("지금 편집 중인 목록이 기본 내용으로 바뀌어요. (저장 버튼을 눌러야 실제로 적용돼요) 계속할까요?")) return;
+    try { const r = await api("config/seed-notices"); notices = r.items.map((n) => ({ ...n })); renderNotices(); toast("기본 내용을 불러왔어요. 저장을 눌러 주세요"); } catch (err) { toast(err.message); }
+  });
   $("#saveStatsBtn").addEventListener("click", (e) => save(e.currentTarget, () => ({ statsEnabled: $("#statsEnabled").checked }), "저장했어요"));
   $("#saveAiBtn").addEventListener("click", (e) => save(e.currentTarget, () => {
     syncReplies();

@@ -953,3 +953,98 @@ html, body { height: 100%; }
 body.maint-lock{overflow:hidden}
 
 .lightbox-dl{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-size:.95rem;backdrop-filter:blur(4px)}
+
+/* =====================================================================
+   오픈 전 UI 다듬기: 햄버거 모션 / 사이드 메뉴 / 안내 창 / 모달 애니메이션 / 스티커
+   ===================================================================== */
+body.menu-open, body.modal-open { overflow: hidden; }
+:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+
+/* 햄버거 → X */
+.menu-toggle { position: relative; transition: transform .2s ease, background .2s ease, border-color .2s ease; -webkit-tap-highlight-color: transparent; }
+.menu-toggle:active { transform: scale(.92); }
+.menu-toggle .bars { position: relative; display: block; width: 18px; height: 14px; }
+.menu-toggle .bars i { position: absolute; left: 0; width: 100%; height: 2px; border-radius: 2px; background: var(--text); transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .2s ease, top .28s cubic-bezier(.4,0,.2,1); }
+.menu-toggle .bars i:nth-child(1) { top: 0; }
+.menu-toggle .bars i:nth-child(2) { top: 6px; }
+.menu-toggle .bars i:nth-child(3) { top: 12px; }
+.menu-toggle.open { background: var(--bg-deep); border-color: var(--purple); }
+.menu-toggle.open .bars i:nth-child(1) { top: 6px; transform: rotate(45deg); }
+.menu-toggle.open .bars i:nth-child(2) { opacity: 0; transform: scaleX(.2); }
+.menu-toggle.open .bars i:nth-child(3) { top: 6px; transform: rotate(-45deg); }
+
+/* 사이드바 안의 닫기(X) 버튼 — 모바일에서만 */
+.sidebar-close { display: none; margin-left: auto; position: relative; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); cursor: pointer; }
+.sidebar-close span { position: absolute; left: 9px; top: 15px; width: 14px; height: 2px; background: var(--text); border-radius: 2px; }
+.sidebar-close span:first-child { transform: rotate(45deg); }
+.sidebar-close span:last-child { transform: rotate(-45deg); }
+
+/* 모바일 사이드바: 부드러운 슬라이드 + 배경 페이드 */
+.sidebar-backdrop { display: block; opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s; backdrop-filter: blur(2px); }
+.sidebar-backdrop.open { opacity: 1; visibility: visible; }
+@media (max-width: 720px) {
+  .sidebar { transition: transform .3s cubic-bezier(.32,.72,0,1), box-shadow .3s; overflow-y: auto; overscroll-behavior: contain; box-shadow: none; padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+  .sidebar.open { box-shadow: 8px 0 40px rgba(20, 10, 50, .28); }
+  .sidebar-close { display: inline-block; }
+  .sidebar .conv-list { min-height: 120px; }
+}
+
+/* 사이드 메뉴(사용법/공지/이벤트/설정/관리자) */
+.side-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.side-item { position: relative; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: var(--radius-md); font: inherit; font-size: .85rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: transform .15s ease, border-color .15s ease, background .15s ease; }
+.side-item:hover { border-color: var(--purple); background: var(--bg-deep); }
+.side-item:active { transform: scale(.97); }
+.side-item[hidden] { display: none; }
+.si-ico { font-size: 1rem; }
+.si-dot { position: absolute; top: 8px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--pink-deep); box-shadow: 0 0 0 3px rgba(255,107,107,.25); animation: dot-pulse 1.6s ease-in-out infinite; }
+@keyframes dot-pulse { 50% { transform: scale(1.35); } }
+
+/* 모달: 부드럽게 나타나기 */
+.modal-backdrop { display: flex; visibility: hidden; opacity: 0; transition: opacity .2s ease, visibility .2s; backdrop-filter: blur(3px); }
+.modal-backdrop.open { visibility: visible; opacity: 1; }
+.modal-backdrop .modal { transform: translateY(14px) scale(.98); transition: transform .25s cubic-bezier(.2,.9,.3,1.2); }
+.modal-backdrop.open .modal { transform: none; }
+.modal-header .modal-close { width: 32px; height: 32px; border-radius: 50%; transition: background .15s; }
+.modal-header .modal-close:hover { background: var(--bg-deep); }
+@media (max-width: 720px) {
+  .modal-backdrop { align-items: flex-end; padding: 0; }
+  .modal { width: 100%; max-width: 100vw; max-height: 88dvh; border-radius: 22px 22px 0 0; }
+  .modal-backdrop .modal { transform: translateY(40px); }
+  .modal-body { padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* 안내 창 (사용법/공지/이벤트 탭) */
+.modal-info { width: 480px; }
+.info-tabs { display: flex; gap: 6px; padding: 10px 16px 0; border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; }
+.info-tabs button { flex: 1 0 auto; border: 0; background: none; padding: 9px 12px; font: inherit; font-size: .85rem; font-weight: 700; color: var(--text-muted); cursor: pointer; border-bottom: 3px solid transparent; transition: color .15s, border-color .15s; white-space: nowrap; }
+.info-tabs button.active { color: var(--purple-deep); border-bottom-color: var(--purple); }
+.notices-body { max-height: none; flex: 1; }
+.notice-card { animation: card-in .35s ease both; background: var(--surface); }
+.notice-card.kind-event { border-color: rgba(255,107,107,.35); background: linear-gradient(135deg, rgba(255,107,107,.07), rgba(124,92,252,.06)); }
+.notice-card.kind-guide { border-style: dashed; }
+@keyframes card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.info-empty { text-align: center; padding: 24px 0; }
+
+/* 빨드 스티커: 통통 튀고, 남은 시간 링이 줄어든다 */
+.sticker { width: 64px; height: 64px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.sticker.show { animation: sticker-pop .4s ease, sticker-bob 1.1s ease-in-out .4s infinite; }
+.sticker::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 3px solid var(--pink-deep); border-right-color: transparent; border-bottom-color: transparent; opacity: .85; }
+.sticker.show::after { animation: sticker-ring var(--sticker-ms, 6s) linear forwards; }
+.sticker:active { transform: scale(.9); }
+@keyframes sticker-bob { 50% { transform: translateY(-6px) rotate(-5deg); } }
+@keyframes sticker-ring { to { transform: rotate(360deg); opacity: 0; } }
+
+/* 설정 창 보기 좋게 */
+.modal-body .field input, .modal-body .field select { transition: border-color .15s, box-shadow .15s; }
+.modal-body .field input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(160,107,255,.18); outline: none; }
+.divider { margin: 4px 0; }
+
+/* 모바일 상단바/입력창 다듬기 */
+@media (max-width: 720px) {
+  .topbar { position: sticky; top: 0; z-index: 30; background: var(--surface); padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
+  .composer-row { gap: 6px; }
+  .bubble { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

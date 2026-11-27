@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=28" />
+<link rel="stylesheet" href="admin.css?v=29" />
 </head>
 <body>
 
@@ -177,7 +177,8 @@
         <label class="chk"><input type="checkbox" id="stEnabled"><span>떠다니는 스티커 보너스 켜기</span></label>
       </div>
       <div class="card">
-        <div class="card-head"><h2>공지사항</h2><button class="btn btn-ghost btn-sm" id="addNoticeBtn" type="button">+ 추가</button></div>
+        <div class="card-head"><h2>공지 · 이벤트 · 사용법</h2><div class="row"><button class="btn btn-ghost btn-sm" id="seedNoticeBtn" type="button">기본 내용 불러오기</button><button class="btn btn-ghost btn-sm" id="addNoticeBtn" type="button">+ 추가</button></div></div>
+        <p class="note">사용자 화면의 "공지사항 / 이벤트 / 사용법" 창에 그대로 나와요. 본문에 <code>{signup}</code> <code>{stickerMin}</code> <code>{stickerMax}</code> 를 쓰면 현재 보너스 설정 숫자로 바뀌어요.</p>
         <div id="noticesList"></div>
       </div>
       <div class="actions"><button class="btn btn-primary" id="saveContentBtn" type="button">저장</button></div>
@@ -350,10 +351,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=28"></script>
+<script src="firebase-config.js?v=29"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=28"></script>
-<script type="module" src="admin.js?v=28"></script>
+<script type="module" src="auth.js?v=29"></script>
+<script type="module" src="admin.js?v=29"></script>
 </body>
 </html>

@@ -20,7 +20,7 @@ import {
   adminSetBalance,
   listCreditIdentities,
 } from "./credits.js";
-import { getConfig, setConfig, resetConfig, publicConfig } from "./config.js";
+import { getConfig, setConfig, resetConfig, publicConfig, SEED_NOTICES } from "./config.js";
 import { checkAccess, blockedResponse } from "./guard.js";
 import { findBadWord, maskBadWords } from "./filter.js";
 import {
@@ -467,6 +467,10 @@ async function handleAdmin(request, env, url) {
       const next = await setConfig(env, patch);
       await logAudit(env, admin, "설정 변경", Object.keys(patch || {}).join(", "));
       return json(next);
+    }
+
+    if (path === "config/seed-notices" && request.method === "GET") {
+      return json({ items: SEED_NOTICES });
     }
 
     if (path === "config/reset" && request.method === "POST") {

@@ -98,10 +98,12 @@ export async function claimStickerBonus(env, identity, cap = STARTING_CREDITS, o
   const onCooldown = await env.RATE_LIMIT_KV.get(cooldownKey);
   if (onCooldown) return { granted: false, balance: await getBalance(env, identity, cap) };
 
-  await env.RATE_LIMIT_KV.put(cooldownKey, "1", { expirationTtl: Math.max(60, Math.ceil(cooldownSec)) });
   const current = await getBalance(env, identity, cap);
+  // 이미 가득 찼으면 줄 게 없다: 쿨다운도 쓰지 않고 "가득 참"으로 알려준다 (예전엔 +N%라고 해놓고 실제로는 안 늘었다).
+  if (current >= cap) return { granted: false, full: true, balance: current };
+  await env.RATE_LIMIT_KV.put(cooldownKey, "1", { expirationTtl: Math.max(60, Math.ceil(cooldownSec)) });
   const next = await setBalance(env, identity, Math.min(cap, current + amount));
-  return { granted: true, amount, balance: next };
+  return { granted: true, amount: next - current, balance: next };
 }
 
 // ---------------- 관리자 전용 ----------------

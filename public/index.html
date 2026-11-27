@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=28" />
+<link rel="stylesheet" href="style.css?v=29" />
 </head>
 <body>
 <div class="app">
@@ -25,6 +25,7 @@
     <div class="brand">
       <img class="brand-icon" src="icon-64.png" alt="빨드" />
       <span class="brand-name">빨드 AI</span>
+      <button type="button" class="sidebar-close" id="sidebarClose" aria-label="메뉴 닫기"><span></span><span></span></button>
     </div>
 
     <div class="new-chat-row">
@@ -59,16 +60,20 @@
         </div>
       </div>
       <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFill"></div></div>
-      <button id="noticesBtn" class="settings-btn">📢 공지사항</button>
-      <button id="settingsBtn" class="settings-btn">⚙️ 설정</button>
-      <a href="admin.html" class="settings-btn" style="text-align:center;text-decoration:none;">🔐 관리자</a>
+      <div class="side-menu" role="navigation" aria-label="안내 메뉴">
+        <button type="button" id="guideBtn" class="side-item"><span class="si-ico">📖</span><span>사용법</span></button>
+        <button type="button" id="noticesBtn" class="side-item"><span class="si-ico">📢</span><span>공지사항</span><i class="si-dot" id="noticesDot" hidden></i></button>
+        <button type="button" id="eventsBtn" class="side-item"><span class="si-ico">🎁</span><span>이벤트</span></button>
+        <button type="button" id="settingsBtn" class="side-item"><span class="si-ico">⚙️</span><span>설정</span></button>
+        <a href="admin" id="adminLink" class="side-item" hidden><span class="si-ico">🔐</span><span>관리자</span></a>
+      </div>
     </div>
   </aside>
 
   <main class="main">
     <header class="topbar">
       <div class="topbar-left">
-        <button id="menuToggle" class="menu-toggle" aria-label="메뉴 열기">☰</button>
+        <button id="menuToggle" class="menu-toggle" aria-label="메뉴 열기" aria-expanded="false" aria-controls="sidebar"><span class="bars"><i></i><i></i><i></i></span></button>
         <span class="mood-badge" id="moodBadge">🌙 아직 멍청한 시간</span>
         <span class="secret-badge" id="secretBadge" hidden>🕶️ 시크릿 모드 (저장 안 됨)</span>
       </div>
@@ -202,29 +207,18 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="noticesBackdrop">
-  <div class="modal">
+<div class="modal-backdrop" id="noticesBackdrop" aria-hidden="true">
+  <div class="modal modal-info" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
     <div class="modal-header">
-      <span>📢 공지사항</span>
-      <button class="modal-close" id="closeNotices">✕</button>
+      <span id="infoTitle">📢 안내</span>
+      <button class="modal-close" id="closeNotices" aria-label="닫기">✕</button>
     </div>
-    <div class="modal-body notices-body">
-      <article class="notice-card">
-        <img class="notice-image" src="icon-256.png" alt="빨드 스티커 이벤트" />
-        <h3>🎁 랜덤 빨드 스티커 이벤트</h3>
-        <p>채팅 중 화면 아무 곳에나 빨드 스티커가 잠깐(4초) 나타난다능! 놓치기 전에 클릭하면 빨드 파워 사용량을 10~30% 랜덤으로 채워준다능. 눈 크게 뜨고 있어바!</p>
-      </article>
-      <article class="notice-card">
-        <img class="notice-image" src="icon-256.png" alt="가입 보너스 이벤트" />
-        <h3>🎉 첫 가입 보너스</h3>
-        <p>로그인/회원가입하면 계정당 1회, 빨드 파워 사용량을 100% 바로 채워준다능! 게스트로도 쓸 수 있지만, 로그인하면 더 든든하다능.</p>
-      </article>
-      <article class="notice-card">
-        <img class="notice-image" src="icon-256.png" alt="노을 모드 안내" />
-        <h3>🌇 노을 모드 안내</h3>
-        <p>한국시간 오후 3시가 지나면 빨드가 아주 가끔 조금 또렷해진다능 (완전 똑똑해지는 건 아니고 살짝!). 그 전엔 평소처럼 멍청하고 웃긴 빨드를 만날 수 있다능.</p>
-      </article>
+    <div class="info-tabs" id="infoTabs" role="tablist">
+      <button type="button" role="tab" data-kind="guide">📖 사용법</button>
+      <button type="button" role="tab" data-kind="notice">📢 공지</button>
+      <button type="button" role="tab" data-kind="event">🎁 이벤트</button>
     </div>
+    <div class="modal-body notices-body" id="infoBody"></div>
   </div>
 </div>
 
@@ -258,16 +252,16 @@
   <a id="lightboxDownload" class="lightbox-dl" download="bbald.jpg" href="#">⬇ 저장</a>
 </div>
 
-<script src="firebase-config.js?v=28"></script>
+<script src="firebase-config.js?v=29"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=28"></script>
+<script type="module" src="auth.js?v=29"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>
