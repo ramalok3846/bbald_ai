@@ -1048,3 +1048,22 @@ body.menu-open, body.modal-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* ---------- SVG 아이콘 (이모지 대체) ---------- */
+.ico, .si-ico { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; line-height: 1; }
+.ico-svg { width: 1.15em; height: 1.15em; display: block; }
+.si-ico { font-size: 1.15rem; color: var(--purple-deep); }
+.icon-btn .ico-svg { width: 1.15rem; height: 1.15rem; }
+.modal-title, .mood-badge, .secret-badge, .shared-title, .info-tabs button, .notice-card h3 { display: inline-flex; align-items: center; gap: 6px; }
+.mood-badge .ico-svg, .secret-badge .ico-svg { width: 1em; height: 1em; }
+.notice-card h3 .ico-svg { color: var(--purple); width: 1.1em; height: 1.1em; }
+.notice-card.kind-event h3 .ico-svg { color: var(--pink-deep); }
+.pin-tag { margin-left: 6px; font-size: .68rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--bg-deep); color: var(--purple-deep); border: 1px solid var(--border); }
+.modal-close .ico-svg, .lightbox-close .ico-svg, .conv-item-del .ico-svg, .attach-remove .ico-svg { width: 1em; height: 1em; }
+.modal-close, .lightbox-close { display: inline-flex; align-items: center; justify-content: center; }
+.conv-item-del, .attach-remove { display: inline-flex; align-items: center; justify-content: center; }
+.sticker-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; top: -4px; right: -4px; }
+.sticker-badge .ico-svg { width: 13px; height: 13px; }
+.maint-emoji { color: var(--pink-deep, #d6322e); display: flex; justify-content: center; }
+.maint-emoji .ico-svg { width: 76px; height: 76px; stroke-width: 1.6; }
+.lightbox-dl { display: inline-flex; align-items: center; gap: 6px; }

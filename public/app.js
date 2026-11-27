@@ -100,10 +100,10 @@
   // 단계 키(lite/basic/deep/story)라서 AI를 바꿔도 같은 단계가 그대로 유지되고,
   // 실제로 어떤 모델이 불려가는지는 서버(src/worker.js MODEL_IDS)가 AI별로 정한다.
   const TIERS = [
-    { value: "lite", label: "⚡ 빨드 라이트", desc: "가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
-    { value: "basic", label: "🦕 빨드 기본", desc: "속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
-    { value: "deep", label: "🧠 빨드 딥씽킹", desc: "가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
-    { value: "story", label: "📖 빨드 스토리", desc: "표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
+    { value: "lite", label: "빨드 라이트", desc: "가장 빠르고 가벼운 두뇌. 짧은 대화에 딱!", cost: 1, memberOnly: false },
+    { value: "basic", label: "빨드 기본", desc: "속도와 똑똑함의 균형. 평소엔 이걸로!", cost: 1.5, memberOnly: false },
+    { value: "deep", label: "빨드 딥씽킹", desc: "가장 깊게 생각하는 두뇌. 사용량을 많이 씀", cost: 3, memberOnly: true },
+    { value: "story", label: "빨드 스토리", desc: "표현력 풍부한 창작 두뇌", cost: 2, memberOnly: true },
   ];
   const REAL_MODEL = {
     builtin: { lite: "빨드 내장 반응", basic: "빨드 내장 반응", deep: "빨드 내장 반응", story: "빨드 내장 반응" },
@@ -153,7 +153,8 @@
 
   // 관리자가 정한 배너/공지/문구/AI 사용 여부/제한값을 화면에 반영한다.
   // ---------------- 안내 창: 사용법 / 공지사항 / 이벤트 (관리자가 편집) ----------------
-  const INFO_KINDS = { guide: "📖 사용법", notice: "📢 공지사항", event: "🎁 이벤트" };
+  const INFO_KINDS = { guide: "사용법", notice: "공지사항", event: "이벤트" };
+  const KIND_ICON = { guide: "book", notice: "megaphone", event: "gift" };
   let infoKind = "guide";
   const SEEN_KEY = "bbald_seen_info";
   function fillTpl(text) {
@@ -182,13 +183,14 @@
       b.setAttribute("aria-selected", String(on));
       b.classList.toggle("active", on);
     });
-    infoTitle.textContent = INFO_KINDS[infoKind] || "안내";
+    infoTitle.innerHTML = bIcon(KIND_ICON[infoKind] || "info") + " ";
+    infoTitle.appendChild(document.createTextNode(INFO_KINDS[infoKind] || "안내"));
     infoBody.innerHTML = "";
     const list = Array.isArray(pubCfg.notices) ? pubCfg.notices.filter((n) => (n.kind || "notice") === infoKind) : null;
     if (!list || !list.length) {
       const p = document.createElement("p");
       p.className = "hint info-empty";
-      p.textContent = list ? "아직 올라온 글이 없다능! 🦕" : "불러오지 못했다능... 잠시 후 다시 열어달라능!";
+      p.textContent = list ? "아직 올라온 글이 없다능!" : "불러오지 못했다능... 잠시 후 다시 열어달라능!";
       infoBody.appendChild(p);
     } else {
       list.forEach((n, i) => {
@@ -196,9 +198,11 @@
         art.className = `notice-card kind-${infoKind}`;
         art.style.animationDelay = `${Math.min(i, 8) * 40}ms`;
         const h = document.createElement("h3");
-        h.textContent = `${n.emoji ? n.emoji + " " : ""}${n.pinned ? "📌 " : ""}${n.title}`;
+        h.innerHTML = bIcon(KIND_ICON[infoKind] || "info") + " ";
+        h.appendChild(document.createTextNode(n.title));
+        if (n.pinned) { const pin = document.createElement("span"); pin.className = "pin-tag"; pin.textContent = "고정"; h.appendChild(pin); }
         const pEl = document.createElement("p");
-        pEl.textContent = fillTpl(n.body);
+        pEl.textContent = bStripEmoji(fillTpl(n.body));
         art.append(h, pEl);
         infoBody.appendChild(art);
       });
@@ -220,6 +224,9 @@
     if (infoKind !== "guide") markInfoSeen();
     infoBody.scrollTop = 0;
   });
+
+  // PAL 콘솔(ramalok.kr/console) 통계: 스크립트(/js/pal-analytics.js)가 없거나 막혀 있어도 아무 일도 일어나지 않는다.
+  function track(name) { try { window.PalAnalytics?.event(name); } catch {} }
 
   // ---------------- 모달 열기/닫기 (애니메이션 + Esc + 포커스) ----------------
   let lastFocus = null;
@@ -246,7 +253,7 @@
       ov.id = "maintOverlay";
       ov.className = "maint-overlay";
       ov.setAttribute("role", "alertdialog");
-      ov.innerHTML = '<div class="maint-box"><div class="maint-emoji">🛠️</div><h2>점검 중이다능</h2><p class="maint-msg"></p><button type="button" class="maint-retry">다시 확인하기</button></div>';
+      ov.innerHTML = '<div class="maint-box"><div class="maint-emoji">' + bIcon("wrench") + '</div><h2>점검 중이다능</h2><p class="maint-msg"></p><button type="button" class="maint-retry">다시 확인하기</button></div>';
       document.body.appendChild(ov);
       ov.querySelector(".maint-retry").addEventListener("click", () => loadPublicConfig());
     }
@@ -536,7 +543,7 @@
     renderRefill(data.refill);
     const plan = data.plan || { id: "free", name: "무료" };
     const until = data.planUntil ? ` (${new Date(data.planUntil).toLocaleDateString("ko-KR")}까지)` : "";
-    planStatus.textContent = `요금제: ${plan.id === "free" ? "무료" : `⭐ ${plan.name}${until}`}`;
+    planStatus.textContent = `요금제: ${plan.id === "free" ? "무료" : `${plan.name}${until}`}`;
     unifiedCreditsLine.textContent = data.unifiedAvailable
       ? `크레딧 ${data.credits} = 빨드 기본 ${data.local} + PAL 통합 ${data.unifiedCredits}`
       : "PAL 통합 크레딧을 못 불러왔다능 (빨드 기본 크레딧만 보인다능)";
@@ -618,7 +625,7 @@
       opt.value = m.value;
       const locked = isGuest && m.memberOnly;
       opt.disabled = locked;
-      opt.textContent = locked ? `${m.label} 🔒` : m.label;
+      opt.textContent = locked ? `${m.label} (로그인 필요)` : m.label;
       modelSelect.appendChild(opt);
     }
     const stillValid = models.some((m) => m.value === prevValue && !(isGuest && m.memberOnly));
@@ -681,7 +688,8 @@
       const delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "conv-item-del";
-      delBtn.textContent = "✕";
+      delBtn.innerHTML = bIcon("x");
+      delBtn.setAttribute("aria-label", "대화 삭제");
       delBtn.title = "대화 삭제";
       delBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -924,6 +932,11 @@
     return `${String(Math.floor(totalMin / 60)).padStart(2, "0")}:${String(totalMin % 60).padStart(2, "0")}`;
   }
 
+  function setMood(icon, text) {
+    moodBadge.innerHTML = bIcon(icon) + " ";
+    moodBadge.appendChild(document.createTextNode(text));
+  }
+
   function updateMoodUI(hour, minute, level, sunsetLabel) {
     const hh = String(hour).padStart(2, "0");
     const mm = String(minute).padStart(2, "0");
@@ -932,16 +945,16 @@
 
     if (level <= 0.05) {
       smartState.textContent = `멍청 모드${sunsetNote}`;
-      moodBadge.textContent = "🌙 아직 멍청한 시간";
+      setMood("moon", "아직 멍청한 시간");
     } else if (level <= 0.4) {
       smartState.textContent = `노을 다가오는 중 (살짝 또렷)${sunsetNote}`;
-      moodBadge.textContent = "🌤️ 노을이 다가오는 중";
+      setMood("cloudsun", "노을이 다가오는 중");
     } else if (level <= 0.75) {
       smartState.textContent = `노을 모드 (제법 또렷)${sunsetNote}`;
-      moodBadge.textContent = "🌇 노을 모드! 조금 똑똑해짐";
+      setMood("sunset", "노을 모드! 조금 똑똑해짐");
     } else {
       smartState.textContent = `노을 절정 (오늘 중 제일 또렷)${sunsetNote}`;
-      moodBadge.textContent = "🌅 노을 절정! 오늘 제일 또렷함";
+      setMood("sunrise", "노을 절정! 오늘 제일 또렷함");
     }
   }
 
@@ -964,6 +977,9 @@
 
   // --- 메시지 렌더링 ---
   function addMessage(role, text, opts = {}) {
+    // 이모지(그림 문자)는 기본적으로 화면에서 가린다 (관리자 설정 "답변의 이모지 유지"를 켜면 그대로).
+    // 저장된 대화 내용은 그대로 두고, 보여줄 때만 지운다. 안내/오류 문구는 항상 지운다.
+    if (typeof text === "string" && (opts.extraClass || !pubCfg.texts?.keepEmoji)) text = bStripEmoji(text);
     const wrap = document.createElement("div");
     wrap.className = `msg ${role}${opts.extraClass ? " " + opts.extraClass : ""}`;
 
@@ -1044,7 +1060,7 @@
     wrap.appendChild(img);
     const bubble = document.createElement("div");
     bubble.className = "bubble loading-bubble";
-    bubble.textContent = pickLoadingPhrase(isEating);
+    bubble.textContent = bStripEmoji(pickLoadingPhrase(isEating));
     wrap.appendChild(bubble);
     chatEl.appendChild(wrap);
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -1075,7 +1091,8 @@
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
       removeBtn.className = "attach-remove";
-      removeBtn.textContent = "✕";
+      removeBtn.innerHTML = bIcon("x");
+      removeBtn.setAttribute("aria-label", "첨부 삭제");
       removeBtn.addEventListener("click", () => {
         pendingAttachments.splice(idx, 1);
         renderAttachPreview();
@@ -1355,6 +1372,8 @@
     clearAttachments();
     autoResize();
 
+    track("bbald-chat");
+    if (attachments.length) track("bbald-image");
     sendQueue.push({ text, attachments, provider, model, apiKey, thumbsReady });
     processQueue();
   });
@@ -1529,7 +1548,7 @@
     const size = 64;
     stickerBtn.style.left = `${Math.max(8, Math.random() * Math.max(0, bounds.width - size - 16))}px`;
     stickerBtn.style.top = `${Math.max(8, Math.random() * Math.max(0, bounds.height - size - 16))}px`;
-    stickerBadge.textContent = "🎁";
+    stickerBadge.innerHTML = bIcon("gift");
     stickerBtn.style.setProperty("--sticker-ms", `${STICKER_SHOW_MS}ms`);
     stickerBtn.hidden = false;
     stickerBtn.classList.remove("show");
@@ -1552,6 +1571,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (data.granted) {
+          track("bbald-sticker");
           renderCredits(data.balance, data.cap);
           const pctGained = Math.max(1, Math.round((data.amount / (data.cap || creditsCap || 100)) * 100));
           addMessage("assistant", `짠! 빨드 스티커 찾았다능! 보너스 사용량 +${pctGained}% 선물이다능! 🎁🦕`, { extraClass: "snack", skipStore: true });
@@ -1607,18 +1627,18 @@
     shareVisibility.disabled = true;
     const publicOpt = shareVisibility.querySelector('option[value="public"]');
     if (publicOpt) publicOpt.disabled = pubCfg.sharing?.publicAllowed === false;
-    const fail = (t) => { shareHint.textContent = t; };
+    const fail = (t) => { shareHint.textContent = bStripEmoji(t); };
     if (pubCfg.sharing?.enabled === false) return fail("지금은 대화 공유가 꺼져 있다능.");
     if (!currentUser) return fail("대화 공유는 로그인해야 쓸 수 있다능! 🔒");
     if (isIncognito) return fail("시크릿 대화는 저장이 안 돼서 공유할 수 없다능 🕶️");
     if (!currentMessages.length) return fail("먼저 빨드랑 대화를 해야 공유할 수 있다능!");
-    shareHint.textContent = "저장하는 중...";
+    shareHint.textContent = bStripEmoji("저장하는 중...");
     await persistCurrentConversation();
     const cur = conversationsCache.find((c) => c.id === currentConvId);
     if (!cur) return fail("대화를 저장하지 못했다능... 잠시 후 다시 해달라능");
     shareVisibility.value = cur.visibility || "private";
     shareVisibility.disabled = false;
-    shareHint.textContent = "공개 범위를 고르면 바로 적용된다능. 공유하는 건 글(대화 내용)뿐이고 사진은 안 나간다능.";
+    shareHint.textContent = bStripEmoji("공개 범위를 고르면 바로 적용된다능. 공유하는 건 글(대화 내용)뿐이고 사진은 안 나간다능.");
     showShareLink(cur.shareId, cur.visibility);
   }
   function showShareLink(shareId, visibility) {
@@ -1642,19 +1662,19 @@
         body: JSON.stringify({ visibility: shareVisibility.value }),
       });
       const data = await res.json();
-      if (!res.ok) { shareHint.textContent = data.error || "공개 범위를 바꾸지 못했다능"; return; }
+      if (!res.ok) { shareHint.textContent = bStripEmoji(data.error || "공개 범위를 바꾸지 못했다능"); return; }
       const cur = conversationsCache.find((c) => c.id === currentConvId);
       if (cur) { cur.visibility = data.visibility; cur.shareId = data.shareId; }
-      shareHint.textContent = data.visibility === "private" ? "이제 나만 볼 수 있다능 🔒" : "공유 링크가 만들어졌다능! 아래 링크를 복사해서 보내면 된다능 🔗";
+      shareHint.textContent = bStripEmoji(data.visibility === "private" ? "이제 나만 볼 수 있다능 🔒" : "공유 링크가 만들어졌다능! 아래 링크를 복사해서 보내면 된다능 🔗");
       showShareLink(data.shareId, data.visibility);
     } catch {
-      shareHint.textContent = "공개 범위를 바꾸지 못했다능...";
+      shareHint.textContent = bStripEmoji("공개 범위를 바꾸지 못했다능...");
     } finally {
       shareVisibility.disabled = false;
     }
   });
   document.getElementById("shareCopy")?.addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(shareLink.value); shareHint.textContent = "링크를 복사했다능! 📋"; }
+    try { await navigator.clipboard.writeText(shareLink.value); shareHint.textContent = "링크를 복사했다능!"; }
     catch { shareLink.select(); shareHint.textContent = "복사가 안 돼서 선택만 해뒀다능, 직접 복사해달라능"; }
   });
 
@@ -1663,7 +1683,7 @@
     composer.hidden = true;
     const banner = document.createElement("div");
     banner.className = "shared-banner";
-    banner.innerHTML = '<span>🔗 공유된 대화 (읽기 전용)</span><a href="' + location.pathname + '">나도 빨드와 대화하기</a>';
+    banner.innerHTML = '<span class="shared-title">' + bIcon("link") + ' 공유된 대화 (읽기 전용)</span><a href="' + location.pathname + '">나도 빨드와 대화하기</a>';
     chatWrap.parentNode.insertBefore(banner, chatWrap);
     chatEl.innerHTML = "";
     try {

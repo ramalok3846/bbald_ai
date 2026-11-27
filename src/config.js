@@ -84,7 +84,7 @@ const DEFAULTS = {
   notices: [],
   noticesSeeded: false, // 관리자가 한 번이라도 공지를 저장했는지 (그 전에는 기본 공지/이벤트/사용법을 보여준다)
   banner: { enabled: false, text: "", level: "info", link: "" },
-  texts: { greeting: "", placeholder: "" },
+  texts: { greeting: "", placeholder: "", keepEmoji: false },
 
   statsEnabled: true, // 일별 통계 수집 (KV 쓰기가 늘어나므로 끌 수 있다)
 
@@ -209,6 +209,7 @@ function merge(p = {}) {
     texts: {
       greeting: typeof p.texts?.greeting === "string" ? p.texts.greeting.slice(0, 300) : d.texts.greeting,
       placeholder: typeof p.texts?.placeholder === "string" ? p.texts.placeholder.slice(0, 100) : d.texts.placeholder,
+      keepEmoji: bool(p.texts?.keepEmoji, d.texts.keepEmoji),
     },
   };
 }

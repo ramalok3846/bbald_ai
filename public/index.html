@@ -15,7 +15,8 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="style.css?v=29" />
+<script src="/js/pal-analytics.js" defer></script>
+<link rel="stylesheet" href="style.css?v=30" />
 </head>
 <body>
 <div class="app">
@@ -30,7 +31,7 @@
 
     <div class="new-chat-row">
       <button id="newChatBtn" class="new-chat-btn">+ 새 대화</button>
-      <button id="incognitoBtn" class="icon-btn" title="시크릿 모드 (저장 안 됨)">🕶️</button>
+      <button id="incognitoBtn" class="icon-btn" title="시크릿 모드 (저장 안 됨)" aria-label="시크릿 모드"><span class="ico" data-ico="glasses"></span></button>
     </div>
 
     <nav class="conv-list" id="convList">
@@ -61,11 +62,11 @@
       </div>
       <div class="usage-bar-track"><div class="usage-bar-fill" id="usageBarFill"></div></div>
       <div class="side-menu" role="navigation" aria-label="안내 메뉴">
-        <button type="button" id="guideBtn" class="side-item"><span class="si-ico">📖</span><span>사용법</span></button>
-        <button type="button" id="noticesBtn" class="side-item"><span class="si-ico">📢</span><span>공지사항</span><i class="si-dot" id="noticesDot" hidden></i></button>
-        <button type="button" id="eventsBtn" class="side-item"><span class="si-ico">🎁</span><span>이벤트</span></button>
-        <button type="button" id="settingsBtn" class="side-item"><span class="si-ico">⚙️</span><span>설정</span></button>
-        <a href="admin" id="adminLink" class="side-item" hidden><span class="si-ico">🔐</span><span>관리자</span></a>
+        <button type="button" id="guideBtn" class="side-item"><span class="si-ico" data-ico="book"></span><span>사용법</span></button>
+        <button type="button" id="noticesBtn" class="side-item"><span class="si-ico" data-ico="megaphone"></span><span>공지사항</span><i class="si-dot" id="noticesDot" hidden></i></button>
+        <button type="button" id="eventsBtn" class="side-item"><span class="si-ico" data-ico="gift"></span><span>이벤트</span></button>
+        <button type="button" id="settingsBtn" class="side-item"><span class="si-ico" data-ico="sliders"></span><span>설정</span></button>
+        <a href="admin" id="adminLink" class="side-item" hidden><span class="si-ico" data-ico="shield"></span><span>관리자</span></a>
       </div>
     </div>
   </aside>
@@ -74,8 +75,8 @@
     <header class="topbar">
       <div class="topbar-left">
         <button id="menuToggle" class="menu-toggle" aria-label="메뉴 열기" aria-expanded="false" aria-controls="sidebar"><span class="bars"><i></i><i></i><i></i></span></button>
-        <span class="mood-badge" id="moodBadge">🌙 아직 멍청한 시간</span>
-        <span class="secret-badge" id="secretBadge" hidden>🕶️ 시크릿 모드 (저장 안 됨)</span>
+        <span class="mood-badge" id="moodBadge"><span class="ico" data-ico="moon"></span> 아직 멍청한 시간</span>
+        <span class="secret-badge" id="secretBadge" hidden><span class="ico" data-ico="glasses"></span> 시크릿 모드 (저장 안 됨)</span>
       </div>
       <div class="topbar-right">
         <button type="button" id="shareBtn" class="icon-btn" title="대화 공유" aria-label="대화 공유">
@@ -89,7 +90,7 @@
           <option value="gemini">Gemini</option>
         </select>
         <select id="modelSelect" class="select">
-          <option value="default">🦕 빨드 두뇌</option>
+          <option value="default">빨드 두뇌</option>
         </select>
         <div class="theme-sw" id="themeSw" role="group" aria-label="화면 테마">
           <button type="button" data-mode="system" aria-pressed="true" aria-label="테마: 시스템" title="기기 설정 따라가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v11H3zM8 20h8M12 16v4"></path></svg></button>
@@ -105,7 +106,7 @@
         <div class="msg assistant">
           <img class="avatar" src="icon-64.png" alt="빨드" />
           <div class="bubble">
-            안뇽!! 빨드다능! 🦕 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)
+            안뇽!! 빨드다능! 무엇이든 물어봐바~ (근데 어려운 건 잘 모를 수도 있다능 히히)
           </div>
         </div>
       </section>
@@ -118,8 +119,8 @@
     <form class="composer" id="composer">
       <div class="attach-preview" id="attachPreview" hidden></div>
       <div class="composer-row">
-        <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부 (여러 개 가능)">📎</button>
-        <button type="button" id="attachUrlBtn" class="icon-btn" title="이미지 URL로 첨부">🔗</button>
+        <button type="button" id="attachBtn" class="icon-btn" title="파일에서 이미지 첨부 (여러 개 가능)" aria-label="이미지 첨부"><span class="ico" data-ico="clip"></span></button>
+        <button type="button" id="attachUrlBtn" class="icon-btn" title="이미지 URL로 첨부" aria-label="이미지 주소로 첨부"><span class="ico" data-ico="link"></span></button>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
         <textarea id="input" class="input" placeholder="빨드에게 말 걸어보기..." rows="1"></textarea>
         <button type="submit" class="send-btn" id="sendBtn" title="전송 (Ctrl+Enter)" aria-label="전송">
@@ -136,8 +137,8 @@
 <div class="modal-backdrop" id="settingsBackdrop">
   <div class="modal">
     <div class="modal-header">
-      <span>⚙️ 설정</span>
-      <button class="modal-close" id="closeSettings">✕</button>
+      <span class="modal-title"><span class="ico" data-ico="sliders"></span> 설정</span>
+      <button class="modal-close" id="closeSettings"><span class="ico" data-ico="x"></span></button>
     </div>
     <div class="modal-body">
       <p class="hint">프로필 사진은 PAL 통합 계정 사진을 그대로 쓴다능 (로그인한 계정에서 바꾸면 여기도 같이 바뀜).</p>
@@ -210,13 +211,13 @@
 <div class="modal-backdrop" id="noticesBackdrop" aria-hidden="true">
   <div class="modal modal-info" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
     <div class="modal-header">
-      <span id="infoTitle">📢 안내</span>
-      <button class="modal-close" id="closeNotices" aria-label="닫기">✕</button>
+      <span id="infoTitle" class="modal-title">안내</span>
+      <button class="modal-close" id="closeNotices" aria-label="닫기"><span class="ico" data-ico="x"></span></button>
     </div>
     <div class="info-tabs" id="infoTabs" role="tablist">
-      <button type="button" role="tab" data-kind="guide">📖 사용법</button>
-      <button type="button" role="tab" data-kind="notice">📢 공지</button>
-      <button type="button" role="tab" data-kind="event">🎁 이벤트</button>
+      <button type="button" role="tab" data-kind="guide"><span class="ico" data-ico="book"></span> 사용법</button>
+      <button type="button" role="tab" data-kind="notice"><span class="ico" data-ico="megaphone"></span> 공지</button>
+      <button type="button" role="tab" data-kind="event"><span class="ico" data-ico="gift"></span> 이벤트</button>
     </div>
     <div class="modal-body notices-body" id="infoBody"></div>
   </div>
@@ -225,8 +226,8 @@
 <div class="modal-backdrop" id="shareBackdrop">
   <div class="modal">
     <div class="modal-header">
-      <span>🔗 대화 공유</span>
-      <button class="modal-close" id="closeShare">✕</button>
+      <span class="modal-title"><span class="ico" data-ico="share"></span> 대화 공유</span>
+      <button class="modal-close" id="closeShare"><span class="ico" data-ico="x"></span></button>
     </div>
     <div class="modal-body">
       <p class="hint" id="shareHint"></p>
@@ -247,21 +248,22 @@
 </div>
 
 <div class="lightbox" id="lightbox" hidden>
-  <button type="button" class="lightbox-close" id="lightboxClose" aria-label="닫기">✕</button>
+  <button type="button" class="lightbox-close" id="lightboxClose" aria-label="닫기"><span class="ico" data-ico="x"></span></button>
   <img id="lightboxImg" alt="확대된 이미지" />
-  <a id="lightboxDownload" class="lightbox-dl" download="bbald.jpg" href="#">⬇ 저장</a>
+  <a id="lightboxDownload" class="lightbox-dl" download="bbald.jpg" href="#"><span class="ico" data-ico="download"></span> 저장</a>
 </div>
 
-<script src="firebase-config.js?v=29"></script>
+<script src="icons.js?v=30"></script>
+<script src="firebase-config.js?v=30"></script>
 <!-- PAL 통합 로그인(SSO): ramalok.kr 메인 사이트와 같은 주소(origin)라서, 거기에
      이미 로그인돼 있으면 빨드 AI도 자동으로 로그인된다. 다른 도메인(미리보기 등)에서
      열면 이 두 파일은 404가 나고, auth.js가 빨드 AI 자체 로그인으로 조용히 대체한다. -->
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=29"></script>
+<script type="module" src="auth.js?v=30"></script>
 <!-- SunCalc: 순수 JS 일몰 계산 라이브러리, 네트워크 요청 없이 동작해서
      서버(/api/time) 연결이 안 될 때도 오프라인으로 노을 시각을 계산할 수 있다. -->
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>

@@ -21,19 +21,62 @@ async function initShared() {
   const P = window.palAuth;
   const { updatePassword, updateEmail } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
 
+  let lastUid = null;
   P.onAuthStateChanged((user) => { lastUid = user ? user.uid : null; dispatchAuthChanged(user); });
 
-  // 팝업에서 로그인이 끝났는데 이 창의 Firebase가 새 로그인을 바로 못 알아채는 경우가 있다
-  // (같은 주소끼리는 커스텀 토큰 없이 브라우저 저장소로만 공유되기 때문).
-  // 그래서 팝업이 끝나면 잠깐 기다려 보고, 그래도 로그인 상태가 안 잡히면 새로고침해서 저장된 세션을 읽는다.
-  let lastUid = null;
+  // ---- 팝업 로그인: 새로고침 없이 바로 로그인 상태가 되도록 한다 ----
+  // 같은 주소(ramalok.kr)끼리는 로그인 정보를 브라우저 저장소로만 공유해서, 팝업에서 로그인해도
+  // 이 창은 한참 뒤에야 알아챌 때가 있었다. 그래서 팝업에 "handoff=1"을 붙여 로그인 토큰(커스텀 토큰)을
+  // 직접 받아서 이 창에서 곧바로 signInWithCustomToken 한다 (PAL 통합 로그인이 같은 방식으로 다른 주소를 이어받는 것과 동일).
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const waitForUser = async (ms) => { for (let t = 0; t < ms && !P.currentUser(); t += 150) await sleep(150); return P.currentUser(); };
+  function announce(u) {
+    if (!u) return;
+    if (u.uid !== lastUid) { lastUid = u.uid; dispatchAuthChanged(u); }
+  }
+
+  function popupLogin() {
+    return new Promise((resolve, reject) => {
+      const hubOrigin = new URL(window.PalSSO.hub).origin;
+      const q = new URLSearchParams({ redirect: location.href, mode: "popup", origin: location.origin, handoff: "1" });
+      const w = window.open(`${window.PalSSO.hub}/login?${q}`, "pal-sso", "width=480,height=720,menubar=no,toolbar=no");
+      if (!w) {
+        // 팝업이 막혔으면 같은 창에서 로그인 화면으로 이동한다 (끝나면 이 페이지로 돌아온다).
+        window.PalSSO.login({ popup: false });
+        return resolve(null);
+      }
+      let done = false, gotMsg = false;
+      const finish = (fn, v) => { if (done) return; done = true; window.removeEventListener("message", onMsg); clearInterval(iv); fn(v); };
+      const onMsg = async (e) => {
+        if (e.origin !== hubOrigin || !e.data || e.data.type !== "pal-sso") return;
+        gotMsg = true;
+        if (!e.data.ok) return finish(reject, new Error(e.data.error || "login_failed"));
+        try {
+          const cur = P.currentUser();
+          if (!(cur && e.data.user && cur.uid === e.data.user.uid)) {
+            if (e.data.customToken) await P.signInWithCustomToken(e.data.customToken);
+            else await waitForUser(4000);
+          }
+          finish(resolve, { user: e.data.user, idToken: e.data.idToken });
+        } catch (err) { finish(reject, err); }
+      };
+      window.addEventListener("message", onMsg);
+      // 로그인 전에 창을 그냥 닫은 경우 (메시지 없이 닫힘): 혹시 이미 로그인됐는지만 잠깐 확인하고 끝낸다.
+      const iv = setInterval(async () => {
+        if (!w.closed || done || gotMsg) return;
+        clearInterval(iv);
+        const u = await waitForUser(1500);
+        finish(resolve, u ? { user: { uid: u.uid } } : null);
+      }, 500);
+    });
+  }
+
   async function loginAndSync() {
-    const res = await window.PalSSO.login({ popup: true });
-    for (let i = 0; i < 16 && !P.currentUser(); i++) await sleep(250);
-    if (!P.currentUser() && res && res.user) { location.reload(); return res; }
-    const u = P.currentUser();
-    if (u && u.uid !== lastUid) { lastUid = u.uid; dispatchAuthChanged(u); }
+    const res = await popupLogin();
+    let u = P.currentUser() || (res && res.user ? await waitForUser(2500) : null);
+    // 그래도 이 창이 로그인 상태를 못 잡았다면 마지막 수단으로 저장된 세션을 읽도록 새로고침한다.
+    if (!u && res && res.user) { location.reload(); return res; }
+    announce(u);
     return res;
   }
   // 다른 탭/팝업에서 로그인·로그아웃한 뒤 이 창으로 돌아왔을 때 상태를 다시 맞춘다.

@@ -15,7 +15,7 @@
 </script>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="admin.css?v=29" />
+<link rel="stylesheet" href="admin.css?v=30" />
 </head>
 <body>
 
@@ -35,7 +35,7 @@
     <aside class="gate-brand" aria-hidden="true">
       <div class="gb-top"><span class="mark">빨</span><b>BBALD ADMIN</b></div>
       <div class="gb-mid">
-        <span class="lock">🔒 관리자 전용 공간</span>
+        <span class="lock">관리자 전용 공간</span>
         <h2>빨드 AI를<br>한 곳에서 관리하세요</h2>
         <ul>
           <li>크레딧 소모 속도 · 모델 단계별 비용</li>
@@ -162,6 +162,7 @@
       <div class="card">
         <h2>문구</h2>
         <label class="fld"><span>첫 인사말 (비우면 기본)</span><textarea id="textGreeting" rows="2" maxlength="300"></textarea></label>
+        <label class="chk"><input type="checkbox" id="textKeepEmoji"><span>답변의 이모지 그대로 보이기 (끄면 화면에서 이모지를 가려요)</span></label>
         <label class="fld"><span>입력창 안내문 (비우면 기본)</span><input type="text" id="textPlaceholder" maxlength="100"></label>
       </div>
       <div class="card">
@@ -351,10 +352,10 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="firebase-config.js?v=29"></script>
+<script src="firebase-config.js?v=30"></script>
 <script type="module" src="/js/firebase-init.js"></script>
 <script src="/js/pal-sso.js"></script>
-<script type="module" src="auth.js?v=29"></script>
-<script type="module" src="admin.js?v=29"></script>
+<script type="module" src="auth.js?v=30"></script>
+<script type="module" src="admin.js?v=30"></script>
 </body>
 </html>

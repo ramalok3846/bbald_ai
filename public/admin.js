@@ -2,7 +2,7 @@
   const $ = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
   const PROVIDER_LABELS = { builtin: "빨드 기본", cloudflare: "Cloudflare", anthropic: "Claude", openai: "ChatGPT", gemini: "Gemini" };
-  const TIER_LABELS = { lite: "⚡ 라이트", basic: "🦕 기본", deep: "🧠 딥씽킹", story: "📖 스토리" };
+  const TIER_LABELS = { lite: "라이트", basic: "기본", deep: "딥씽킹", story: "스토리" };
 
   // ---------------- 테마 ----------------
   const THEME_KEY = "bbald_theme";
@@ -312,6 +312,7 @@
     $("#bannerText").value = c.banner.text;
     $("#textGreeting").value = c.texts.greeting;
     $("#textPlaceholder").value = c.texts.placeholder;
+    $("#textKeepEmoji").checked = !!c.texts.keepEmoji;
     $("#bonusSignup").value = c.bonus.signupPct;
     const s = c.bonus.sticker;
     $("#stEnabled").checked = s.enabled;
@@ -346,7 +347,6 @@
       <div class="sub" data-i="${i}">
         <div class="grid">
           <label class="fld"><span>종류</span><select class="nk"><option value="notice" ${n.kind === "notice" ? "selected" : ""}>공지사항</option><option value="event" ${n.kind === "event" ? "selected" : ""}>이벤트</option><option value="guide" ${n.kind === "guide" ? "selected" : ""}>사용법</option></select></label>
-          <label class="fld"><span>이모지</span><input class="ne" maxlength="4" value="${esc(n.emoji)}"></label>
           <label class="fld"><span>제목</span><input class="nt" maxlength="80" value="${esc(n.title)}"></label>
         </div>
         <label class="fld"><span>내용</span><textarea class="nb" rows="4" maxlength="1000">${esc(n.body)}</textarea></label>
@@ -359,11 +359,11 @@
     notices = $$("#noticesList .sub").map((el, i) => ({
       id: notices[i]?.id || `n${Date.now().toString(36)}${i}`,
       kind: el.querySelector(".nk").value,
-      emoji: el.querySelector(".ne").value, title: el.querySelector(".nt").value, body: el.querySelector(".nb").value,
+      emoji: "", title: el.querySelector(".nt").value, body: el.querySelector(".nb").value,
       visible: el.querySelector(".nv").checked, pinned: el.querySelector(".np").checked,
     }));
   }
-  $("#addNoticeBtn").addEventListener("click", () => { syncNotices(); notices.unshift({ id: `n${Date.now().toString(36)}`, kind: "notice", emoji: "📢", title: "", body: "", visible: true, pinned: false }); renderNotices(); });
+  $("#addNoticeBtn").addEventListener("click", () => { syncNotices(); notices.unshift({ id: `n${Date.now().toString(36)}`, kind: "notice", emoji: "", title: "", body: "", visible: true, pinned: false }); renderNotices(); });
   $("#noticesList").addEventListener("click", (e) => {
     const b = e.target.closest(".ndel"); if (!b) return;
     const i = Number(b.closest(".sub").dataset.i);
@@ -388,7 +388,7 @@
     syncNotices();
     return {
       banner: { enabled: $("#bannerOn").checked, level: $("#bannerLevel").value, link: $("#bannerLink").value.trim(), text: $("#bannerText").value },
-      texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value },
+      texts: { greeting: $("#textGreeting").value, placeholder: $("#textPlaceholder").value, keepEmoji: $("#textKeepEmoji").checked },
       bonus: { signupPct: numIn("#bonusSignup"), sticker: { enabled: $("#stEnabled").checked, minPct: numIn("#stMin"), maxPct: numIn("#stMax"), cooldownSec: numIn("#stCool"), minIntervalSec: numIn("#stIntMin"), maxIntervalSec: numIn("#stIntMax") } },
       notices,
     };
@@ -415,7 +415,7 @@
     btn.disabled = true; $("#healthOut").textContent = "점검 중...";
     try {
       const r = await api("health");
-      $("#healthOut").innerHTML = r.checks.map((c) => `<div class="hrow ${c.ok ? "ok" : "bad"}">${c.ok ? "✅" : "⚠️"} <b>${esc(c.name)}</b> — ${esc(c.detail)}</div>`).join("");
+      $("#healthOut").innerHTML = r.checks.map((c) => `<div class="hrow ${c.ok ? "ok" : "bad"}"><span class="hico ${c.ok ? "ok" : "bad"}">${c.ok ? "정상" : "확인"}</span> <b>${esc(c.name)}</b> — ${esc(c.detail)}</div>`).join("");
     } catch (err) { $("#healthOut").textContent = err.message; }
     btn.disabled = false;
   });
@@ -434,7 +434,7 @@
       const d = await api(`lookup?identity=${encodeURIComponent(id)}`);
       opsId = d.identity;
       const used = Object.entries(d.today || {}).map(([k, v]) => `${PROVIDER_LABELS[k] || k} ${typeof v === "object" ? (v.used + "/" + v.limit) : v}`).join(" · ");
-      $("#opsInfo").innerHTML = `<b>${esc(d.identity)}</b> (${d.isGuest ? "게스트" : "회원"}) — 크레딧 ${d.credits}/${d.cap}${d.refill?.nextAt ? ` · 다음 충전 ${fmtTime(d.refill.nextAt)}` : ""}<br>오늘 사용: ${esc(used) || "없음"}<br>${d.ban ? `🚫 차단 중 (${esc(d.ban.reason || "사유 없음")}, ${d.ban.until ? fmtTime(d.ban.until) + "까지" : "영구"})` : "차단 안 됨"}`;
+      $("#opsInfo").innerHTML = `<b>${esc(d.identity)}</b> (${d.isGuest ? "게스트" : "회원"}) — 크레딧 ${d.credits}/${d.cap}${d.refill?.nextAt ? ` · 다음 충전 ${fmtTime(d.refill.nextAt)}` : ""}<br>오늘 사용: ${esc(used) || "없음"}<br>${d.ban ? `<span class="hico bad">차단 중</span> (${esc(d.ban.reason || "사유 없음")}, ${d.ban.until ? fmtTime(d.ban.until) + "까지" : "영구"})` : "차단 안 됨"}`;
       $("#opsActions").hidden = false; $("#banRow").hidden = false;
     } catch (err) { toast(err.message); }
   });
@@ -473,7 +473,7 @@
   $("#ftBtn").addEventListener("click", async () => {
     try {
       const r = await post("filter-test", { text: $("#ftText").value });
-      $("#ftOut").innerHTML = `${r.enabled ? "" : "(필터가 꺼져 있어요) "}${r.blocked ? `🚫 걸림: <b>${esc(r.blocked)}</b>` : "✅ 통과"}<br>가림 결과: ${esc(r.masked)}`;
+      $("#ftOut").innerHTML = `${r.enabled ? "" : "(필터가 꺼져 있어요) "}${r.blocked ? `<span class="hico bad">걸림</span> <b>${esc(r.blocked)}</b>` : `<span class="hico ok">통과</span>`}<br>가림 결과: ${esc(r.masked)}`;
     } catch (err) { toast(err.message); }
   });
 
