@@ -1067,3 +1067,71 @@ body.menu-open, body.modal-open { overflow: hidden; }
 .maint-emoji { color: var(--pink-deep, #d6322e); display: flex; justify-content: center; }
 .maint-emoji .ico-svg { width: 76px; height: 76px; stroke-width: 1.6; }
 .lightbox-dl { display: inline-flex; align-items: center; gap: 6px; }
+
+/* =====================================================================
+   그랜드 오픈 카운트다운 (v1.0.0)
+   ===================================================================== */
+.ver-badge { margin-left: 2px; padding: 2px 8px; border-radius: 999px; font-size: .68rem; font-weight: 800; letter-spacing: .02em; color: #fff; background: var(--grad); box-shadow: 0 2px 8px rgba(124,92,252,.35); }
+body.launch-lock { overflow: hidden; }
+.launch-overlay { position: fixed; inset: 0; z-index: 100000; width: 100vw; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; overflow: auto; color: #fff; background: #120a2b; isolation: isolate; }
+.launch-bg { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #3a1f86 0%, #1b0f45 45%, #0d0724 100%); }
+.launch-bg .orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: .55; animation: orb-float 14s ease-in-out infinite; }
+.launch-bg .o1 { width: 46vmax; height: 46vmax; left: -12vmax; top: -10vmax; background: #ff5f7e; }
+.launch-bg .o2 { width: 42vmax; height: 42vmax; right: -14vmax; top: 18vh; background: #7c5cfc; animation-delay: -5s; }
+.launch-bg .o3 { width: 36vmax; height: 36vmax; left: 20vw; bottom: -18vmax; background: #e58bd9; animation-delay: -9s; }
+.launch-bg .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px); background-size: 44px 44px; -webkit-mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 80%); mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 80%); }
+@keyframes orb-float { 50% { transform: translate(5vmax, 4vmax) scale(1.12); } }
+.launch-stars { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.launch-stars span { position: absolute; width: 14px; height: 14px; color: #ffe08a; opacity: 0; animation: twinkle 3.2s ease-in-out infinite; }
+.launch-stars span svg { width: 100%; height: 100%; fill: currentColor; stroke: none; }
+@keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(.5) rotate(0); } 50% { opacity: .9; transform: scale(1.1) rotate(25deg); } }
+.launch-confetti { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.launch-confetti i { position: absolute; top: -20px; border-radius: 2px; opacity: .95; animation: confetti-fall linear forwards; }
+@keyframes confetti-fall { to { transform: translateY(110vh) rotate(720deg); opacity: .9; } }
+
+.launch-card { position: relative; width: 100%; max-width: 640px; text-align: center; padding: 34px 22px 26px; border-radius: 28px; background: linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.05)); border: 1px solid rgba(255,255,255,.22); box-shadow: 0 30px 80px rgba(8,2,30,.55), inset 0 1px 0 rgba(255,255,255,.25); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); animation: card-rise .8s cubic-bezier(.2,.9,.3,1.1) both; }
+@keyframes card-rise { from { opacity: 0; transform: translateY(24px) scale(.97); } }
+.launch-ribbon { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; padding: 7px 18px; border-radius: 999px; font-size: .82rem; letter-spacing: .12em; background: linear-gradient(90deg, #ff6b6b, #ffb347); color: #2b1330; box-shadow: 0 8px 22px rgba(255,107,107,.45); white-space: nowrap; }
+.launch-ribbon .lv { padding: 1px 8px; border-radius: 999px; background: rgba(43,19,48,.88); color: #ffe08a; font-weight: 800; letter-spacing: .04em; }
+.launch-mascot { position: relative; width: 132px; height: 132px; margin: 10px auto 6px; }
+.launch-mascot img { position: relative; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255,255,255,.7); box-shadow: 0 12px 34px rgba(0,0,0,.4); animation: mascot-bob 3s ease-in-out infinite; }
+.launch-mascot .halo { position: absolute; inset: -18px; border-radius: 50%; background: conic-gradient(from 0deg, #ff6b6b, #ffd166, #7c5cfc, #e58bd9, #ff6b6b); filter: blur(18px); opacity: .55; animation: halo-spin 8s linear infinite; }
+@keyframes mascot-bob { 50% { transform: translateY(-8px) rotate(-2deg); } }
+@keyframes halo-spin { to { transform: rotate(360deg); } }
+.launch-title { margin: 8px 0 4px; font-size: clamp(1.7rem, 6.4vw, 2.5rem); line-height: 1.2; font-weight: 800; letter-spacing: -.01em; background: linear-gradient(90deg, #fff, #ffd9f2 50%, #ffe08a); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.launch-date { margin: 0 0 18px; font-size: .98rem; color: rgba(255,255,255,.82); }
+.launch-count { display: flex; align-items: flex-start; justify-content: center; gap: 6px; margin: 0 auto 16px; }
+.launch-count[hidden] { display: none; }
+.launch-count .cell { min-width: 64px; padding: 12px 6px 9px; border-radius: 16px; background: rgba(10,4,34,.55); border: 1px solid rgba(255,255,255,.18); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
+.launch-count .cell b { display: block; font-size: clamp(1.8rem, 8vw, 2.8rem); line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 18px rgba(255,160,220,.6); }
+.launch-count .cell b.tick { animation: digit-tick .35s ease; }
+@keyframes digit-tick { from { transform: translateY(-35%); opacity: .2; } }
+.launch-count .cell small { display: block; margin-top: 6px; font-size: .72rem; letter-spacing: .08em; color: rgba(255,255,255,.7); }
+.launch-count em { align-self: center; font-style: normal; font-weight: 800; font-size: 1.6rem; color: rgba(255,255,255,.45); padding-bottom: 14px; animation: colon-blink 1s steps(2) infinite; }
+@keyframes colon-blink { 50% { opacity: .15; } }
+.launch-count.urgent .cell b { color: #ffd166; animation: urgent-pulse .5s ease-in-out infinite alternate; }
+@keyframes urgent-pulse { to { transform: scale(1.06); } }
+.launch-msg { margin: 0 auto 18px; max-width: 460px; line-height: 1.7; color: rgba(255,255,255,.9); font-size: .98rem; word-break: keep-all; }
+.launch-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.launch-btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 999px; font: inherit; font-weight: 700; font-size: .95rem; cursor: pointer; text-decoration: none; border: 1px solid rgba(255,255,255,.3); color: #fff; background: rgba(255,255,255,.1); transition: transform .15s ease, background .15s ease, box-shadow .2s; }
+.launch-btn svg { width: 1.1em; height: 1.1em; }
+.launch-btn:hover { background: rgba(255,255,255,.2); transform: translateY(-1px); }
+.launch-btn:active { transform: scale(.97); }
+.launch-btn.primary { border: 0; background: linear-gradient(90deg, #ff6b6b, #ff8e53 55%, #ffb347); color: #2b1330; box-shadow: 0 10px 28px rgba(255,107,107,.45); }
+.launch-btn.primary:hover { box-shadow: 0 14px 34px rgba(255,107,107,.6); }
+.launch-foot { margin: 18px 0 0; font-size: .78rem; color: rgba(255,255,255,.6); }
+.launch-overlay.opened .launch-card { animation: opened-pop .7s cubic-bezier(.2,.9,.3,1.3) both; }
+@keyframes opened-pop { from { transform: scale(.92); } }
+.launch-overlay.opened .launch-mascot img { animation: mascot-party .9s ease-in-out infinite; }
+@keyframes mascot-party { 25% { transform: translateY(-14px) rotate(-6deg); } 75% { transform: translateY(-14px) rotate(6deg); } }
+@media (max-width: 480px) {
+  .launch-card { padding: 30px 14px 22px; border-radius: 24px; }
+  .launch-mascot { width: 104px; height: 104px; }
+  .launch-count { gap: 3px; }
+  .launch-count .cell { min-width: 0; flex: 1 1 0; padding: 10px 2px 8px; }
+  .launch-count em { font-size: 1.2rem; }
+  .launch-btn { padding: 11px 16px; font-size: .9rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-bg .orb, .launch-stars span, .launch-mascot img, .launch-mascot .halo, .launch-count em, .launch-confetti i { animation: none !important; }
+}

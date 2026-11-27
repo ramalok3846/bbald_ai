@@ -243,6 +243,130 @@
     try { lastFocus?.focus?.(); } catch {}
   }
 
+  // ---------------- 그랜드 오픈: 오픈 전 접속 제한 + 카운트다운 ----------------
+  let launchTimer = null;
+  let launchPreview = false; // 관리자가 오픈 전에 미리 입장한 상태
+  let launchCelebrating = false;
+  function fmtKst(ms) {
+    try {
+      return new Date(ms).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", year: "numeric", month: "long", day: "numeric", weekday: "short", hour: "numeric", minute: "2-digit", hour12: true });
+    } catch { return ""; }
+  }
+  function pad2(n) { return String(Math.max(0, n)).padStart(2, "0"); }
+  function confettiHtml(n) {
+    const colors = ["#ff6b6b", "#ffd166", "#7c5cfc", "#e58bd9", "#4ecdc4", "#fff"];
+    let h = "";
+    for (let i = 0; i < n; i++) {
+      const left = Math.random() * 100, delay = Math.random() * 1.6, dur = 2.6 + Math.random() * 2.4, size = 6 + Math.random() * 8, rot = Math.random() * 360;
+      h += `<i style="left:${left}%;width:${size}px;height:${size * 1.6}px;background:${colors[i % colors.length]};animation-delay:${delay}s;animation-duration:${dur}s;transform:rotate(${rot}deg)"></i>`;
+    }
+    return h;
+  }
+  function removeLaunchOverlay() {
+    clearInterval(launchTimer);
+    launchTimer = null;
+    document.getElementById("launchOverlay")?.remove();
+    document.body.classList.remove("launch-lock");
+  }
+  function applyLaunch() {
+    const L = pubCfg.launch;
+    const verBadge = document.getElementById("verBadge");
+    if (verBadge) verBadge.textContent = pubCfg.version || L?.version || "v1.0.0";
+    const showGate = !!(L && L.active && !launchPreview && !pubCfg.maintenance?.enabled);
+    let ov = document.getElementById("launchOverlay");
+    if (!showGate) {
+      if (ov && !launchCelebrating) removeLaunchOverlay();
+      document.body.classList.toggle("launch-lock", !!ov && launchCelebrating);
+      // 오픈 전에 관리자 미리보기로 들어온 경우 표시
+      let pv = document.getElementById("launchPreviewBar");
+      if (L?.active && launchPreview) {
+        if (!pv) {
+          pv = document.createElement("div");
+          pv.id = "launchPreviewBar";
+          pv.className = "site-banner warn";
+          document.querySelector(".main").insertBefore(pv, document.querySelector(".main").firstChild);
+        }
+        pv.textContent = `오픈 전 미리보기 — ${fmtKst(L.at)} 오픈 예정 (관리자만 입장 중)`;
+      } else pv?.remove();
+      return;
+    }
+    const offset = (L.now || Date.now()) - Date.now();
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "launchOverlay";
+      ov.className = "launch-overlay";
+      ov.setAttribute("role", "dialog");
+      ov.setAttribute("aria-label", "빨드 AI 그랜드 오픈 카운트다운");
+      ov.innerHTML = `
+        <div class="launch-bg" aria-hidden="true"><i class="orb o1"></i><i class="orb o2"></i><i class="orb o3"></i><span class="grid"></span></div>
+        <div class="launch-stars" aria-hidden="true">${Array.from({ length: 18 }, (_, i) => `<span style="left:${(i * 53) % 100}%;top:${(i * 37) % 100}%;animation-delay:${(i % 7) * 0.4}s">${bIcon("star")}</span>`).join("")}</div>
+        <div class="launch-confetti" aria-hidden="true"></div>
+        <div class="launch-card">
+          <div class="launch-ribbon"><span class="lv"></span><b>GRAND OPEN</b></div>
+          <div class="launch-mascot"><span class="halo"></span><img src="icon-256.png" alt="빨드" /></div>
+          <h1 class="launch-title"></h1>
+          <p class="launch-date"></p>
+          <div class="launch-count" role="timer" aria-live="off">
+            <div class="cell"><b data-u="d">00</b><small>일</small></div><em>:</em>
+            <div class="cell"><b data-u="h">00</b><small>시간</small></div><em>:</em>
+            <div class="cell"><b data-u="m">00</b><small>분</small></div><em>:</em>
+            <div class="cell"><b data-u="s">00</b><small>초</small></div>
+          </div>
+          <p class="launch-msg"></p>
+          <div class="launch-actions">
+            <a class="launch-btn primary" target="_blank" rel="noopener">${bIcon("megaphone")}<span>오픈 안내 보기</span></a>
+            <button type="button" class="launch-btn ghost" id="launchAdminBtn">${bIcon("shield")}<span>관리자 입장</span></button>
+          </div>
+          <p class="launch-foot">정식 오픈 전까지 점검 · 보수가 있을 수 있어요</p>
+        </div>`;
+      document.body.appendChild(ov);
+      ov.querySelector(".launch-confetti").innerHTML = "";
+      ov.querySelector("#launchAdminBtn").addEventListener("click", () => {
+        if (!currentUser) { authBtn.click(); return; }
+        revealAdminLink(true);
+      });
+    }
+    document.body.classList.add("launch-lock");
+    ov.querySelector(".lv").textContent = pubCfg.version || L.version || "v1.0.0";
+    ov.querySelector(".launch-title").textContent = L.title || "빨드 AI 그랜드 오픈";
+    ov.querySelector(".launch-date").textContent = `${fmtKst(L.at)} (KST) 정식 오픈`;
+    ov.querySelector(".launch-msg").textContent = L.message || "";
+    const nb = ov.querySelector(".launch-btn.primary");
+    nb.href = L.noticeUrl || "https://www.ramalok.kr/notice?id=bbald-open";
+    ov.querySelector("#launchAdminBtn span").textContent = currentUser ? "관리자 확인" : "관리자 입장";
+
+    clearInterval(launchTimer);
+    const tick = () => {
+      const left = L.at - (Date.now() + offset);
+      if (left <= 0) { clearInterval(launchTimer); celebrateOpen(); return; }
+      const sec = Math.floor(left / 1000);
+      const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+      const set = (u, v) => { const el = ov.querySelector(`[data-u="${u}"]`); if (el && el.textContent !== v) { el.textContent = v; el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick"); } };
+      set("d", pad2(d)); set("h", pad2(h)); set("m", pad2(m)); set("s", pad2(s));
+      ov.querySelector(".launch-count").classList.toggle("urgent", left < 60 * 1000);
+    };
+    tick();
+    launchTimer = setInterval(tick, 250);
+  }
+  // 오픈 시각이 되는 순간: 축하 화면 → 잠시 뒤 서비스 열기
+  async function celebrateOpen() {
+    const ov = document.getElementById("launchOverlay");
+    if (!ov || launchCelebrating) return;
+    launchCelebrating = true;
+    ov.classList.add("opened");
+    ov.querySelector(".launch-confetti").innerHTML = confettiHtml(90);
+    ov.querySelector(".launch-title").textContent = `${pubCfg.version || "v1.0.0"} 정식 오픈!`;
+    ov.querySelector(".launch-date").textContent = "빨드 AI가 문을 열었다능";
+    ov.querySelector(".launch-msg").textContent = "지금부터 마음껏 빨드랑 놀아달라능!";
+    ov.querySelector(".launch-count").hidden = true;
+    ov.querySelector(".launch-foot").hidden = true;
+    ov.querySelector(".launch-actions").innerHTML = `<button type="button" class="launch-btn primary" id="launchEnter">${bIcon("bolt")}<span>빨드 만나러 가기</span></button>`;
+    const enter = () => { launchCelebrating = false; try { localStorage.setItem("bbald_v1_welcome", "1"); } catch {} removeLaunchOverlay(); loadPublicConfig(); };
+    ov.querySelector("#launchEnter").addEventListener("click", enter);
+    setTimeout(() => { if (launchCelebrating) enter(); }, 6000);
+    try { await loadPublicConfig(); } catch {}
+  }
+
   // 점검 모드: 화면 전체를 덮고 입력을 막는다 (관리자 설정에서 켜면 새로고침 없이 다음 요청/포커스 때 바로 반영).
   function applyMaintenance(on, message) {
     let ov = document.getElementById("maintOverlay");
@@ -263,6 +387,7 @@
 
   function applyPublicExtras() {
     applyMaintenance(!!pubCfg.maintenance?.enabled, pubCfg.maintenance?.message);
+    applyLaunch();
     const mainEl = document.querySelector(".main");
     let banner = document.getElementById("siteBanner");
     const bc = pubCfg.banner;
@@ -283,6 +408,14 @@
     } else if (banner) banner.hidden = true;
 
     renderInfo();
+    if (pubCfg.launch && !pubCfg.launch.active && pubCfg.launch.enabled && !shareParam) {
+      let seen = true;
+      try { seen = localStorage.getItem("bbald_v1_welcome") === "1"; } catch {}
+      if (!seen && !launchCelebrating && currentMessages.length === 0) {
+        try { localStorage.setItem("bbald_v1_welcome", "1"); } catch {}
+        addMessage("assistant", `${pubCfg.version || "v1.0.0"} 그랜드 오픈을 같이 축하해달라능! 오늘도 빨드랑 놀아달라능~`, { extraClass: "snack", skipStore: true });
+      }
+    }
     if (pubCfg.texts?.placeholder) input.placeholder = pubCfg.texts.placeholder;
     if (pubCfg.limits?.maxMessageChars) input.maxLength = pubCfg.limits.maxMessageChars;
 
@@ -828,7 +961,7 @@
   });
 
   // 관리자 계정이면 사이드바에 "관리자" 메뉴를 보여준다 (일반 사용자에게는 숨김).
-  async function revealAdminLink() {
+  async function revealAdminLink(manual = false) {
     adminLink.hidden = true;
     if (!currentUser) return;
     try {
@@ -836,6 +969,12 @@
       if (!t) return;
       const r = await fetch("api/admin/me", { headers: { "x-admin-token": t } });
       adminLink.hidden = !r.ok;
+      // 오픈 전에는 관리자만 미리 입장할 수 있다.
+      if (r.ok && pubCfg.launch?.active) { launchPreview = true; applyLaunch(); }
+      else if (manual) {
+        const msg = document.querySelector("#launchOverlay .launch-foot");
+        if (msg) msg.textContent = "관리자 계정이 아니라서 들어갈 수 없어요. 오픈 시각까지 기다려 주세요.";
+      }
     } catch {}
   }
 
@@ -1307,6 +1446,7 @@
       removeLoadingBubble();
 
       if (data.maintenance) { applyMaintenance(true, data.reply || data.error); return; }
+      if (data.launch) { loadPublicConfig(); return; }
       if (!res.ok) {
         if (typeof data.credits === "number") renderCredits(data.credits, data.cap);
         renderRefill(data.refill);
@@ -1522,7 +1662,7 @@
   let stickerHideTimer = null;
   const STICKER_SHOW_MS = 6000;
   function stickerEnabled() {
-    return pubCfg.stickerBonus?.enabled !== false && !pubCfg.maintenance?.enabled && !shareParam;
+    return pubCfg.stickerBonus?.enabled !== false && !pubCfg.maintenance?.enabled && !shareParam && !(pubCfg.launch?.active && !launchPreview);
   }
   function scheduleSticker(first = false) {
     clearTimeout(stickerTimer);

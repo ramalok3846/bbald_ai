@@ -86,6 +86,19 @@ const DEFAULTS = {
   banner: { enabled: false, text: "", level: "info", link: "" },
   texts: { greeting: "", placeholder: "", keepEmoji: false },
 
+  // 그랜드 오픈: at 이전에는 서비스 접속을 제한하고 카운트다운 화면만 보여준다 (관리자는 로그인하면 들어올 수 있음).
+  // useNotice가 켜져 있으면 PAL 공지(noticeId)의 첫 일정(milestones[0].at, 한국 시간)을 따라간다.
+  launch: {
+    enabled: true,
+    at: "2026-11-28T10:00:00+09:00",
+    useNotice: true,
+    noticeId: "bbald-open",
+    version: "v1.0.0",
+    title: "빨드 AI 그랜드 오픈",
+    message: "빨드가 정식 오픈을 준비하고 있다능! 오픈 시각이 되면 자동으로 열린다능.",
+    noticeUrl: "https://www.ramalok.kr/notice?id=bbald-open",
+  },
+
   statsEnabled: true, // 일별 통계 수집 (KV 쓰기가 늘어나므로 끌 수 있다)
 
   // 대화 공유. publicAllowed가 false면 "전체 공개"는 못 고르고 링크 공유까지만 된다.
@@ -132,6 +145,10 @@ function cleanNotices(arr) {
     }))
     .filter((n) => n.title || n.body)
     .slice(0, 60);
+}
+
+function validIso(v) {
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:\d{2})$/.test(v) && Number.isFinite(Date.parse(v));
 }
 
 function merge(p = {}) {
@@ -197,6 +214,16 @@ function merge(p = {}) {
         ),
       },
     },
+    launch: {
+      enabled: bool(p.launch?.enabled, d.launch.enabled),
+      at: validIso(p.launch?.at) ? p.launch.at : d.launch.at,
+      useNotice: bool(p.launch?.useNotice, d.launch.useNotice),
+      noticeId: /^[a-z0-9][a-z0-9-]{1,30}$/.test(p.launch?.noticeId || "") ? p.launch.noticeId : d.launch.noticeId,
+      version: typeof p.launch?.version === "string" && p.launch.version.trim() ? p.launch.version.trim().slice(0, 20) : d.launch.version,
+      title: typeof p.launch?.title === "string" && p.launch.title.trim() ? p.launch.title.trim().slice(0, 60) : d.launch.title,
+      message: typeof p.launch?.message === "string" ? p.launch.message.slice(0, 300) : d.launch.message,
+      noticeUrl: typeof p.launch?.noticeUrl === "string" && /^https?:\/\//.test(p.launch.noticeUrl) ? p.launch.noticeUrl.slice(0, 300) : d.launch.noticeUrl,
+    },
     noticesSeeded: p.noticesSeeded === true,
     // 관리자가 아직 공지를 저장한 적이 없으면 기본 공지/이벤트/사용법을 보여준다.
     notices: p.noticesSeeded === true || cleanNotices(p.notices).length ? cleanNotices(p.notices) : cleanNotices(SEED_NOTICES),
@@ -257,6 +284,7 @@ export function publicConfig(config) {
     refillIntervalMin: config.refillIntervalMin,
     refillMaxPer24h: config.refillMaxPer24h,
     maintenance: config.maintenance,
+    version: config.launch.version,
   };
 }
 

@@ -22,6 +22,7 @@ import {
 } from "./credits.js";
 import { getConfig, setConfig, resetConfig, publicConfig, SEED_NOTICES } from "./config.js";
 import { checkAccess, blockedResponse } from "./guard.js";
+import { launchInfo, launchBlock } from "./launch.js";
 import { findBadWord, maskBadWords } from "./filter.js";
 import {
   track,
@@ -237,6 +238,11 @@ async function handleChatInner(request, env, ctx) {
       { error: config.maintenance.message || "지금은 점검 중이다능! 잠시 후에 다시 와달라능 🛠️", reply: config.maintenance.message, snack: false, maintenance: true },
       { status: 503 }
     );
+  }
+  // 그랜드 오픈 전에는 관리자 외 이용 제한
+  {
+    const lb = await launchBlock(env, config, idToken);
+    if (lb) return json(lb, { status: 503 });
   }
   // 통계는 응답을 늦추지 않게 백그라운드로 기록한다.
   const bg = (p) => (ctx?.waitUntil ? ctx.waitUntil(p) : p);
@@ -724,7 +730,8 @@ export default {
     }
 
     if (apiPath === "/api/config/public" && request.method === "GET") {
-      return json(publicConfig(await getConfig(env)), { headers: { "cache-control": "no-store" } });
+      const cfg = await getConfig(env);
+      return json({ ...publicConfig(cfg), launch: await launchInfo(env, cfg) }, { headers: { "cache-control": "no-store" } });
     }
 
     if (apiPath === "/api/time") {
@@ -745,6 +752,18 @@ export default {
 
     if (apiPath === "/api/usage" && request.method === "GET") {
       return handleUsage(request, env, url);
+    }
+
+    // 오픈 전에는 저장·보너스·결제 관련 API도 막는다 (관리자는 토큰으로 통과). 공유 화면은 읽기 전용이라 제외.
+    if (apiPath === "/api/bonus" || apiPath.startsWith("/api/conversations") || apiPath.startsWith("/api/billing/")) {
+      const cfg0 = await getConfig(env);
+      const tk = request.headers.get("x-user-token") || request.headers.get("x-admin-token") || new URL(request.url).searchParams.get("idToken");
+      let tk2 = tk;
+      if (!tk2 && apiPath === "/api/bonus" && request.method === "POST") {
+        try { tk2 = (await request.clone().json())?.idToken || null; } catch {}
+      }
+      const lb = await launchBlock(env, cfg0, tk2);
+      if (lb) return json(lb, { status: 503 });
     }
 
     if (apiPath === "/api/bonus" && request.method === "POST") {
