@@ -245,6 +245,7 @@
 
   // ---------------- 그랜드 오픈: 오픈 전 접속 제한 + 카운트다운 ----------------
   let launchTimer = null;
+  let launchAdminOk = false; // 로그인한 계정이 관리자인지 (오픈 전 입장 버튼용)
   let launchPreview = false; // 관리자가 오픈 전에 미리 입장한 상태
   let launchCelebrating = false;
   function fmtKst(ms) {
@@ -301,11 +302,20 @@
       ov.querySelector(".launch-confetti").innerHTML = "";
       ov.querySelector("#launchAdminBtn").addEventListener("click", () => {
         if (!currentUser) { authBtn.click(); return; }
+        if (launchAdminOk) { launchPreview = true; applyLaunch(); return; }
         revealAdminLink(true);
       });
     return ov;
   }
 
+  function updateLaunchAdminBtn() {
+    const b = document.querySelector("#launchAdminBtn");
+    if (!b) return;
+    const span = b.querySelector("span");
+    if (launchAdminOk) { span.textContent = "관리자 입장하기"; b.classList.add("ready"); }
+    else { span.textContent = currentUser ? "관리자 확인" : "관리자 로그인"; b.classList.remove("ready"); }
+  }
+  let launchPollTimer = null;
   function applyLaunch() {
     const L = pubCfg.launch;
     const verBadge = document.getElementById("verBadge");
@@ -328,7 +338,7 @@
           pv.className = "site-banner warn";
           document.querySelector(".main").insertBefore(pv, document.querySelector(".main").firstChild);
         }
-        pv.textContent = `오픈 전 미리보기 — ${fmtKst(L.at)} 오픈 예정 (관리자만 입장 중)`;
+        pv.textContent = L.paused ? "오픈 일시중지 중 — 관리자만 입장 중" : `오픈 전 미리보기 — ${fmtKst(L.at)} 오픈 예정 (관리자만 입장 중)`;
       } else pv?.remove();
       return;
     }
@@ -337,11 +347,18 @@
     document.body.classList.add("launch-lock");
     ov.querySelector(".lv").textContent = pubCfg.version || L.version || "v1.0.0";
     ov.querySelector(".launch-title").textContent = L.title || "빨드 AI 그랜드 오픈";
-    ov.querySelector(".launch-date").textContent = `${fmtKst(L.at)} (KST) 정식 오픈`;
-    ov.querySelector(".launch-msg").textContent = L.message || "";
+    const paused = !!L.paused;
+    ov.classList.toggle("paused", paused);
+    ov.querySelector(".launch-date").textContent = paused ? "오픈이 잠시 중지되었어요" : `${fmtKst(L.at)} (KST) 정식 오픈`;
+    ov.querySelector(".launch-msg").textContent = paused ? (L.pausedMessage || "잠시 오픈을 멈췄다능!") : (L.message || "");
+    ov.querySelector(".launch-count").hidden = paused;
+    ov.querySelector(".launch-foot").textContent = paused ? "다시 열리면 이 화면이 자동으로 바뀌어요" : "정식 오픈 전까지 점검 · 보수가 있을 수 있어요";
+    // 열려 있는 화면도 중지/재개를 알아차리도록 잠깐씩 설정을 다시 읽는다 (게이트 화면이 떠 있을 때만).
+    clearInterval(launchPollTimer);
+    launchPollTimer = setInterval(() => { if (document.getElementById("launchOverlay") && !launchCelebrating) loadPublicConfig(); else { clearInterval(launchPollTimer); launchPollTimer = null; } }, 20000);
     const nb = ov.querySelector(".launch-btn.primary");
     nb.href = L.noticeUrl || "https://www.ramalok.kr/notice?id=bbald-open";
-    ov.querySelector("#launchAdminBtn span").textContent = currentUser ? "관리자 확인" : "관리자 입장";
+    updateLaunchAdminBtn();
 
     clearInterval(launchTimer);
     const tick = () => {
@@ -353,8 +370,7 @@
       set("d", pad2(d)); set("h", pad2(h)); set("m", pad2(m)); set("s", pad2(s));
       ov.querySelector(".launch-count").classList.toggle("urgent", left < 60 * 1000);
     };
-    tick();
-    launchTimer = setInterval(tick, 250);
+    if (!paused) { tick(); launchTimer = setInterval(tick, 250); }
   }
   // 축하 화면: 오픈 시각이 되는 순간 + 오픈 후 celebrateDays(기본 7일) 동안 접속할 때마다.
   // 건너뛰기: 스페이스 키 (또는 버튼/화면 터치 — 키보드가 없는 모바일용).
@@ -378,7 +394,7 @@
     clearInterval(launchTimer);
     let ov = document.getElementById("launchOverlay");
     if (!ov) ov = buildLaunchOverlay();
-    ov.classList.remove("leaving");
+    ov.classList.remove("leaving", "paused");
     ov.classList.add("opened");
     document.body.classList.add("launch-lock");
     const L = pubCfg.launch || {};
@@ -1006,11 +1022,15 @@
       if (!t) return;
       const r = await fetch("api/admin/me", { headers: { "x-admin-token": t } });
       adminLink.hidden = !r.ok;
-      // 오픈 전에는 관리자만 미리 입장할 수 있다.
-      if (r.ok && pubCfg.launch?.active) { launchPreview = true; applyLaunch(); }
-      else if (manual) {
-        const msg = document.querySelector("#launchOverlay .launch-foot");
-        if (msg) msg.textContent = "관리자 계정이 아니라서 들어갈 수 없어요. 오픈 시각까지 기다려 주세요.";
+      // 오픈 전에는 관리자만 입장할 수 있다. 로그인만으로는 화면이 바뀌지 않고, "입장하기" 버튼을 눌러야 들어간다.
+      launchAdminOk = r.ok;
+      if (pubCfg.launch?.active) {
+        if (r.ok && manual) { launchPreview = true; applyLaunch(); return; }
+        updateLaunchAdminBtn();
+        if (!r.ok && manual) {
+          const msg = document.querySelector("#launchOverlay .launch-foot");
+          if (msg) msg.textContent = "관리자 계정이 아니라서 들어갈 수 없어요. 오픈 시각까지 기다려 주세요.";
+        }
       }
     } catch {}
   }

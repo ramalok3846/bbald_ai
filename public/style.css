@@ -1138,3 +1138,9 @@ body.launch-lock { overflow: hidden; }
 .launch-skip { flex-basis: 100%; margin: 6px 0 0; font-size: .8rem; color: rgba(255,255,255,.65); }
 .launch-skip kbd { display: inline-block; padding: 1px 8px; border-radius: 6px; font: inherit; font-weight: 700; font-size: .78rem; color: #fff; background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.3); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
 .launch-overlay.leaving { opacity: 0; transition: opacity .45s ease; pointer-events: none; }
+
+.launch-btn.ready { background: linear-gradient(90deg, #7c5cfc, #e58bd9); border: 0; color: #fff; box-shadow: 0 10px 28px rgba(124,92,252,.5); animation: ready-pulse 1.6s ease-in-out infinite; }
+@keyframes ready-pulse { 50% { box-shadow: 0 10px 38px rgba(229,139,217,.75); transform: translateY(-1px); } }
+.launch-overlay.paused .launch-ribbon { background: linear-gradient(90deg, #8e8cc4, #b9a7ff); }
+.launch-overlay.paused .launch-title { background: linear-gradient(90deg, #fff, #cfc8ff); -webkit-background-clip: text; background-clip: text; }
+.launch-overlay.paused .launch-mascot img { animation-duration: 6s; filter: saturate(.7); }
